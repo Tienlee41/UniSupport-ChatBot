@@ -186,10 +186,11 @@ class DataRetrieverPipeline:
         async def process_and_rag_task(
             html_results: list[HtmlResult], 
             query: str, 
-            include_pdf: bool
+            include_pdf: bool,
+            include_image: bool,
         ) -> tuple[list[WebSource], list[list[RagSource]]]:
             # Process pages
-            web_sources = await self._process(html_results, include_pdf)
+            web_sources = await self._process(html_results, include_pdf, include_image)
             # RAG processing
             rag_sources_list = await self._split_rag_merge(query, web_sources, params)
             return web_sources, rag_sources_list
@@ -200,7 +201,8 @@ class DataRetrieverPipeline:
                 process_and_rag_task(
                     html_results,
                     item if isinstance(item, str) else item[0],
-                    include_pdf
+                    include_pdf,
+                    params.get("include_image", False),
                 )
             )
             for item, html_results in zip(queries_and_domains, html_results_list)
@@ -330,9 +332,11 @@ class DataRetrieverPipeline:
         crawled: dict[str, HtmlResult] = {}
         
         if crawl_results:
-            self.logger.log(f"[Download] Crawling {len(crawl_results)} URLs...")
+            # Chỉ gửi TOP k_pages URL (theo thứ tự đã rerank) sang ScrapingBee
+            max_pages = min(k_pages, len(crawl_results))
+            self.logger.log(f"[Download] Crawling {max_pages} URLs (from {len(crawl_results)} candidates)...")
             html_list = await self._page_downloader.download(
-                crawl_results, len(crawl_results), include_pdf, include_image
+                crawl_results, max_pages, include_pdf, include_image
             )
             for hr in html_list:
                 crawled[hr["url"]] = hr
@@ -356,11 +360,14 @@ class DataRetrieverPipeline:
     async def _process(
         self,
         html_results: list[HtmlResult],
-        include_pdf: bool
+        include_pdf: bool,
+        include_image: bool,
     ) -> list[WebSource]:
         # Process page
         self.logger.start()
-        web_sources: list[WebSource] = await self._page_extractor.extract(html_results, include_pdf)
+        web_sources: list[WebSource] = await self._page_extractor.extract(
+            html_results, include_pdf, include_image
+        )
         self.logger.end("Process")
         return web_sources
     async def _split_rag_merge(
@@ -507,7 +514,9 @@ class DataRetrieverPipeline:
         self.logger.end("Download")
         # Process page
         self.logger.start()
-        web_sources: list[WebSource] = await self._page_extractor.extract(html_results, include_pdf)
+        web_sources: list[WebSource] = await self._page_extractor.extract(
+            html_results, include_pdf, include_image
+        )
         self.logger.end("Process")
         # Split, rag, merge
         self.logger.start()
