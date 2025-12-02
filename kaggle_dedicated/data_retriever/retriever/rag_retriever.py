@@ -5,35 +5,66 @@ from ..schema import RagSource
 from ..config import RagConfig
 from .converter import RagSourceToDocumentConverter
 
-# This and Splitter Module is only parts that use langchain
-
 class FaissRetriever:
-    """Sentence Transformer based RAG retriever"""
+    """Dense retrieval using FAISS + Sentence Transformers, with optional BM25 hybrid"""
     def __init__(self, config: RagConfig) -> None:
         self.config = config
         self.converter = RagSourceToDocumentConverter()
-        self.embedding = HuggingFaceEmbeddings(model_name=config.embedding_name, model_kwargs={"device":config.device})
+        self.embedding = HuggingFaceEmbeddings(
+            model_name=config.embedding_name, 
+            model_kwargs={"device": config.device}
+        )
+
     def retrieve(self, sources: list[RagSource], query: str, k: int) -> list[RagSource]:
-        """Perform Sentence Transformer rag search, return a list of relevant sources"""
-        docs = [self.converter.convert(source) for source in sources]
-        vector_storage = FAISS.from_documents(docs, self.embedding)
-        relevant_chunks = vector_storage.as_retriever(search_kwargs={"k": k}).invoke(query)
-        results = [self.converter.revert(chunk) for chunk in relevant_chunks]
+        if not sources:
+            return []
+        
+        docs = [self.converter.convert(s) for s in sources]
+        lookup = {s["chunk_index"]: s for s in sources}
+        
+        # Dense retrieval (FAISS)
+        faiss_store = FAISS.from_documents(docs, self.embedding)
+        dense_results = faiss_store.as_retriever(search_kwargs={"k": min(k * 2, len(sources))}).invoke(query)
+        dense_chunks = [self.converter.revert(c) for c in dense_results]
+        
+        if not self.config.use_hybrid:
+            results = dense_chunks[:k]
+        else:
+            # Sparse retrieval (BM25)
+            bm25 = LangChainBM25Retriever.from_documents(docs)
+            bm25.k = min(k * 2, len(sources))
+            sparse_results = bm25.invoke(query)
+            sparse_chunks = [self.converter.revert(c) for c in sparse_results]
+            
+            # Reciprocal Rank Fusion
+            scores: dict[int, float] = {}
+            alpha = self.config.hybrid_alpha
+            for rank, c in enumerate(dense_chunks):
+                scores[c["chunk_index"]] = scores.get(c["chunk_index"], 0) + alpha / (rank + 60)
+            for rank, c in enumerate(sparse_chunks):
+                scores[c["chunk_index"]] = scores.get(c["chunk_index"], 0) + (1 - alpha) / (rank + 60)
+            
+            sorted_idx = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)[:k]
+            results = [lookup[i] for i in sorted_idx]
+        
         if self.config.keep_order:
-            results = sorted(results, key=lambda source: source["chunk_index"])
+            results = sorted(results, key=lambda s: s["chunk_index"])
         return results
+
+
 class BM25Retriever:
-    """BM25 based RAG retriever"""
+    """Pure BM25 sparse retrieval"""
     def __init__(self, config: RagConfig) -> None:
         self.config = config
         self.converter = RagSourceToDocumentConverter()
+
     def retrieve(self, sources: list[RagSource], query: str, k: int) -> list[RagSource]:
-        """Perform BM25 rag searh, return a list of relevant sources"""
-        docs = [self.converter.convert(source) for source in sources]
+        if not sources:
+            return []
+        docs = [self.converter.convert(s) for s in sources]
         retriever = LangChainBM25Retriever.from_documents(docs)
         retriever.k = k
-        relevant_chunks = retriever.invoke(query)
-        results = [self.converter.revert(chunk) for chunk in relevant_chunks]
+        results = [self.converter.revert(c) for c in retriever.invoke(query)]
         if self.config.keep_order:
-            results = sorted(sources, key=lambda source: source["chunk_index"])
+            results = sorted(results, key=lambda s: s["chunk_index"])
         return results

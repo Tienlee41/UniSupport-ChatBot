@@ -12,6 +12,11 @@ class RagSource(TypedDict):
     title: str
     text: str
     chunk_index: int
+    # Rich metadata
+    total_chunks: NotRequired[int]
+    content_type: NotRequired[str]  # text, table, heading
+    position: NotRequired[float]  # 0.0 = dau, 1.0 = cuoi
+    # File info
     file_url: NotRequired[str]
     file_title: NotRequired[str]
     file_type: NotRequired[str]

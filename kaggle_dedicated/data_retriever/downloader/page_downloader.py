@@ -130,14 +130,15 @@ class PageDowloader:
     async def _null_task(self):
         return None
     async def download(self, search_results: list[SearchResult], k_pages: int, include_pdf: bool, include_image: bool) -> list[HtmlResult]:
-        """Download up to k_pages from input list"""
+        """Download up to k_pages from input list - CHI tao jobs cho top k_pages URLs"""
         initial_api_count = self._api_call_count
         self._initial_premium_count = self._premium_api_call_count
         ssl = os.getenv("WEB_SEARCH_SSL", "True").lower() in ("true", "1")
-        # Tạo jobs cho toàn bộ URL nhưng _run_jobs chỉ gửi tối đa k_pages requests cùng lúc
-        max_jobs = len(search_results)
+        
+        # CHI tao jobs cho top k_pages URLs, khong tao job cho tat ca
+        max_jobs = min(k_pages, len(search_results))
         jobs = []
-        for i, search_result in enumerate(search_results[:max_jobs]):
+        for search_result in search_results[:max_jobs]:
             if search_result["url"].endswith(".pdf"):
                 if include_pdf:
                     jobs.append(self._handle_file_task(search_result))
@@ -145,21 +146,19 @@ class PageDowloader:
                     jobs.append(self._null_task())
             else:
                 jobs.append(self._download_task(ssl, search_result))
-        if len(search_results) > max_jobs:
-            print(f"[Page download] Giới hạn jobs: {len(jobs)}/{len(search_results)} (tránh gửi quá nhiều requests)")
-        job_results =  await self._run_jobs(jobs, k_pages)
-        html_results: list[HtmlResult] = []
-        for job_result in job_results:
-            if job_result:
-                html_results.append(job_result)
+        
+        print(f"[Page download] Chi tao {len(jobs)} jobs (k_pages={k_pages}, total_urls={len(search_results)})")
+        
+        job_results = await self._run_jobs(jobs, k_pages)
+        html_results: list[HtmlResult] = [r for r in job_results if r]
+        
         credits_used = self._api_call_count - initial_api_count
         premium_used = self._premium_api_call_count - (getattr(self, '_initial_premium_count', 0))
         regular_used = credits_used - premium_used
-        total_credits_cost = regular_used * 1 + premium_used * 10  # Premium tốn 10 credits
+        total_credits_cost = regular_used * 1 + premium_used * 10
         
-        print(f"[Page download] Success download {len(html_results)} pages")
-        print(f"[Page download] ScrapingBee requests: {credits_used} (regular: {regular_used}, premium: {premium_used})")
-        print(f"[Page download] ScrapingBee credits used: {total_credits_cost} (regular: {regular_used}x1, premium: {premium_used}x10)")
+        print(f"[Page download] Success: {len(html_results)}/{k_pages} pages")
+        print(f"[Page download] Credits: {total_credits_cost} (regular: {regular_used}, premium: {premium_used}x10)")
         return html_results
     async def _handle_file_task(self, search_result: SearchResult) -> HtmlResult | None:
         # Async only to make compatible

@@ -1,6 +1,6 @@
 from .schema import WebSource, RagSource, FileSource, AbstractSearchEngine, SearchResult, HtmlResult
 from .search_engines import BraveSearchEngine, GoogleSearchEngine
-from .ranker import PageRerankModelProtocol, ChunkRanker
+from .ranker import PageRerankModelProtocol, ChunkRanker, ChunkProcessor
 from .downloader import PageDowloader
 from .extractor import ContentExtractor
 from .retriever import Splitter, FaissRetriever, Merger
@@ -13,6 +13,7 @@ from server import GenerationParams
 import asyncio
 import aiohttp
 from typing import cast
+from concurrent.futures import ThreadPoolExecutor
 
 class DataRetrieverPipeline:
     def __init__(
@@ -24,11 +25,15 @@ class DataRetrieverPipeline:
         rag_config: RagConfig | None = None,
         table_merge_config: MergeTableConfig | None = None,
         neighbor_merge_config: MergeNeighborConfig | None = None,
-        chunk_ranker_config: ChunkRankerConfig | None = None
+        chunk_ranker_config: ChunkRankerConfig | None = None,
+        chunk_processor_config: ChunkProcessorConfig | None = None
     ) -> None:
         # Config
         self._concurrent_config = concurrent_config or DataRetrieverConcurrentConig()
         self._query_semaphore = asyncio.Semaphore(self._concurrent_config.engine_query_limit)
+        
+        # Thread pool for CPU-bound tasks
+        self._thread_pool = ThreadPoolExecutor(max_workers=8)
         
         # Websearch
         self._websearch_config = websearch_config or WebsearchConfig()
@@ -46,10 +51,11 @@ class DataRetrieverPipeline:
             table_merge_config or MergeTableConfig()
         )
         
-        # Chunk ranker
+        # Chunk ranker + processor
         self._chunk_ranker = ChunkRanker(chunk_ranker_config or ChunkRankerConfig())
+        self._chunk_processor = ChunkProcessor(chunk_processor_config or ChunkProcessorConfig())
         
-        # Snippet checker - kiểm tra snippet có đủ thông tin không
+        # Snippet checker
         self._snippet_checker: SnippetCheckerProtocol = HeuristicSnippetChecker(
             min_snippet_length=150,
             min_keyword_match_ratio=0.4
@@ -102,6 +108,7 @@ class DataRetrieverPipeline:
         self._page_extractor = ContentExtractor(self._aio_session, self._concurrent_config.file_download_limit, self._websearch_config.file_timeout, self._websearch_config.max_file_per_page)
     async def stop(self):
         await self._aio_session.close()
+        self._thread_pool.shutdown(wait=False)
     async def retrieve_sep(
         self,
         params: GenerationParams,
@@ -205,7 +212,12 @@ class DataRetrieverPipeline:
         
         web_sources_list = self._pages_list_reorder(web_sources_list)
         
-        rag_sources = await self._merge_rag_source(rag_sources_list_list) 
+        # Combine queries for chunk processing
+        combined_query = " ".join(
+            item if isinstance(item, str) else item[0] 
+            for item in queries_and_domains
+        )
+        rag_sources = await self._merge_rag_source(rag_sources_list_list, combined_query) 
         web_sources = await self._merge_web_sources(web_sources_list)
         return web_sources, rag_sources
     def _pages_list_reorder(
@@ -263,145 +275,84 @@ class DataRetrieverPipeline:
         params: GenerationParams,
         search_results_list: list[list[SearchResult]],
     ) -> list[list[HtmlResult]]:
-        """
-        Combined download với tối ưu snippet:
-        - Kiểm tra snippet có đủ thông tin không
-        - Nếu đủ → dùng snippet, không crawl
-        - Nếu không đủ → crawl URL
-        """
+        """Optimized parallel download with snippet optimization"""
         use_snippet_optimization = params.get("use_snippet_optimization", True)
         k_pages = params.get("k_pages", 3)
-        
-        filtered_search_results_list: list[list[SearchResult]] = []
-        recorded_url = set()
-        for search_results in search_results_list:
-            filtered_search_results: list[SearchResult] =[]
-            for search_result in search_results:
-                if search_result["url"] not in recorded_url:
-                    recorded_url.add(search_result["url"])
-                    filtered_search_results.append(search_result)
-            filtered_search_results_list.append(filtered_search_results)
-        
-        # Bước 1: Kiểm tra snippet và phân loại (PARALLEL)
-        snippet_sufficient_results: dict[str, HtmlResult] = {}  # URL -> HtmlResult từ snippet
-        need_crawl_results_list: list[list[SearchResult]] = []  # Các URL cần crawl
-        
-        if use_snippet_optimization:
-            self.logger.start()
-            
-            # Tạo tất cả snippet check tasks song song
-            async def check_snippet(search_result: SearchResult) -> tuple[SearchResult, bool]:
-                snippet = search_result.get("description", "")
-                title = search_result.get("title", "")
-                query = search_result.get("query", "")
-                url = search_result.get("url", "")
-                
-                is_sufficient = await self._snippet_checker.is_sufficient(
-                    snippet=snippet,
-                    title=title,
-                    query=query,
-                    url=url,
-                    params=params
-                )
-                return search_result, is_sufficient
-            
-            # Chạy tất cả snippet checks song song
-            for search_results in filtered_search_results_list:
-                # Tạo tasks cho tất cả search_results trong list này
-                check_tasks = [asyncio.create_task(check_snippet(sr)) for sr in search_results]
-                check_results = await asyncio.gather(*check_tasks)
-                
-                need_crawl: list[SearchResult] = []
-                for search_result, is_sufficient in check_results:
-                    snippet = search_result.get("description", "")
-                    title = search_result.get("title", "")
-                    url = search_result.get("url", "")
-                    
-                    if is_sufficient:
-                        # Dùng snippet làm html, không cần crawl
-                        html_result: HtmlResult = {
-                            **search_result,
-                            "html": f"{title}\n\n{snippet}",  # Combine title + snippet
-                            "score": search_result.get("score", 1.0)
-                        }
-                        snippet_sufficient_results[search_result["url"]] = html_result
-                        snippet_preview = snippet[:150] + "..." if len(snippet) > 150 else snippet
-                        print(f"[Snippet] ✓ Đủ thông tin:")
-                        print(f"  Title: {title}")
-                        print(f"  URL: {url}")
-                        print(f"  Snippet: {snippet_preview}")
-                    else:
-                        # Cần crawl
-                        need_crawl.append(search_result)
-                        snippet_preview = snippet[:150] + "..." if len(snippet) > 150 else snippet
-                        print(f"[Snippet] ✗ Cần crawl:")
-                        print(f"  Title: {title}")
-                        print(f"  URL: {url}")
-                        print(f"  Snippet: {snippet_preview}")
-                
-                need_crawl_results_list.append(need_crawl)
-            self.logger.end("Snippet Check")
-        else:
-            # Không dùng optimization, crawl tất cả
-            need_crawl_results_list = filtered_search_results_list
-        
-        # Bước 2: Crawl các URL cần thiết (giới hạn k_pages)
-        tasks = []
         include_pdf = params.get("include_pdf", False)
         include_image = params.get("include_image", False)
         
-        async def download_task(search_results: list[SearchResult]) -> list[HtmlResult]:
-            return await self._page_downloader.download(search_results, k_pages, include_pdf, include_image)
-        
-        # Đo thời gian crawl
-        crawl_start_time = time.time()
-        total_urls_to_crawl = sum(len(results) for results in need_crawl_results_list)
-        
-        if total_urls_to_crawl > 0:
-            print(f"[Download] Bắt đầu crawl {total_urls_to_crawl} URL(s)...")
-        
-        for need_crawl_results in need_crawl_results_list:
-            if len(need_crawl_results) > 0:
-                tasks.append(asyncio.create_task(download_task(need_crawl_results)))
-        
-        html_results_list = await asyncio.gather(*tasks) if tasks else []
-        
-        crawl_end_time = time.time()
-        crawl_duration = crawl_end_time - crawl_start_time
-        
-        # Merge kết quả crawl
-        flat_html_results: dict[str, HtmlResult] = {}
-        for html_results in html_results_list:
-            for html_result in html_results:
-                if html_result["url"] not in flat_html_results:
-                    flat_html_results[html_result["url"]] = html_result
-        
-        # Merge với snippet results
-        flat_html_results.update(snippet_sufficient_results)
-        
-        # Bước 3: Tạo final results theo thứ tự và giới hạn k_pages
-        final_results_list: list[list[HtmlResult]] = []
+        # Dedupe URLs across all lists
+        seen_urls: set[str] = set()
+        filtered_list: list[list[SearchResult]] = []
         for search_results in search_results_list:
-            final_results: list[HtmlResult] = []
-            for search_result in search_results:
-                if search_result["url"] in flat_html_results:
-                    final_results.append(flat_html_results[search_result["url"]])
-                if len(final_results) >= k_pages:
-                    break
-            final_results_list.append(final_results)
+            filtered = [sr for sr in search_results if sr["url"] not in seen_urls]
+            for sr in filtered:
+                seen_urls.add(sr["url"])
+            filtered_list.append(filtered)
         
-        # Log thống kê
-        total_snippet = len(snippet_sufficient_results)
-        total_crawled = len([r for r in flat_html_results.values() if r["url"] not in snippet_sufficient_results])
+        # Flatten all search results for parallel processing
+        all_results: list[SearchResult] = [sr for srs in filtered_list for sr in srs]
         
-        if total_urls_to_crawl > 0:
-            avg_time_per_url = crawl_duration / total_urls_to_crawl
-            print(f"[Download] Snippet đủ: {total_snippet}, Đã crawl: {total_crawled}")
-            print(f"[Download] Thời gian crawl: {crawl_duration:.2f}s (trung bình {avg_time_per_url:.2f}s/URL)")
+        snippet_results: dict[str, HtmlResult] = {}
+        crawl_results: list[SearchResult] = []
+        
+        if use_snippet_optimization and all_results:
+            self.logger.start()
+            # Check ALL snippets in parallel at once
+            async def check_one(sr: SearchResult) -> tuple[SearchResult, bool]:
+                is_ok = await self._snippet_checker.is_sufficient(
+                    snippet=sr.get("description", ""),
+                    title=sr.get("title", ""),
+                    query=sr.get("query", ""),
+                    url=sr.get("url", ""),
+                    params=params
+                )
+                return sr, is_ok
+            
+            checks = await asyncio.gather(*[check_one(sr) for sr in all_results])
+            
+            for sr, is_sufficient in checks:
+                if is_sufficient:
+                    snippet_results[sr["url"]] = {
+                        **sr,
+                        "html": f"{sr.get('title', '')}\n\n{sr.get('description', '')}",
+                        "score": sr.get("score", 1.0)
+                    }
+                else:
+                    crawl_results.append(sr)
+            
+            self.logger.end("Snippet Check")
         else:
-            print(f"[Download] Snippet đủ: {total_snippet}, Không cần crawl (0 URL)")
+            crawl_results = all_results
         
-        return final_results_list
+        # Crawl all needed URLs in ONE batch (parallel)
+        crawl_start = time.time()
+        crawled: dict[str, HtmlResult] = {}
+        
+        if crawl_results:
+            self.logger.log(f"[Download] Crawling {len(crawl_results)} URLs...")
+            html_list = await self._page_downloader.download(
+                crawl_results, len(crawl_results), include_pdf, include_image
+            )
+            for hr in html_list:
+                crawled[hr["url"]] = hr
+        
+        crawl_time = time.time() - crawl_start
+        
+        # Merge all results
+        all_html = {**crawled, **snippet_results}
+        
+        # Build final results respecting k_pages per query
+        final_list: list[list[HtmlResult]] = []
+        for search_results in search_results_list:
+            final: list[HtmlResult] = []
+            for sr in search_results:
+                if sr["url"] in all_html and len(final) < k_pages:
+                    final.append(all_html[sr["url"]])
+            final_list.append(final)
+        
+        self.logger.log(f"[Download] Snippet: {len(snippet_results)}, Crawled: {len(crawled)} in {crawl_time:.2f}s")
+        return final_list
     async def _process(
         self,
         html_results: list[HtmlResult],
@@ -418,76 +369,79 @@ class DataRetrieverPipeline:
         web_sources: list[WebSource],
         params: GenerationParams
     ) -> list[list[RagSource]]:
-        # Split, rag, merge
+        """Split, RAG, merge - fully parallel using thread pool"""
         self.logger.start()
         merge_table = params.get("merge_table", True)
         merge_neighbor = params.get("merge_neighbor", True)
         chunk_score_threshold = params.get("chunk_score_threshold", 0.5)
-        chunk_rerank_enabled = params.get("chunk_rerank", False)
-        k_docs = params.get("k_docs", 5) # Todo: Split by query priority
+        chunk_rerank_enabled = params.get("chunk_rerank", True)
+        k_docs = params.get("k_docs", 5)
         
-        rag_sources_list: list[list[RagSource]] = []
+        if not web_sources:
+            self.logger.end("RAG")
+            return []
+        
         scores = [source["score"] for source in web_sources]
-        total_scores = sum(scores) 
-        if total_scores == 0: # When reranker fail
-            page_k_docs = [math.ceil(k_docs/len(scores)) for _ in scores]
+        total_scores = sum(scores)
+        if total_scores == 0:
+            page_k_docs = [max(1, k_docs // len(scores))] * len(scores)
         else:
-            page_k_docs = [math.ceil(confidence/total_scores*k_docs) for confidence in scores]
+            page_k_docs = [max(1, math.ceil(s / total_scores * k_docs)) for s in scores]
         
-        # PARALLEL: Xử lý RAG cho các web_sources song song
-        # Wrap synchronous functions trong asyncio.to_thread để chạy song song
-        async def process_rag_for_source(web_source: WebSource, page_k_doc: int) -> list[RagSource]:
-            # Chạy các CPU-bound operations trong thread pool
-            rag_sources = await asyncio.to_thread(self._splitter.split, web_source)
-            self._log_chunks("[Split]", web_source["title"], rag_sources)
-            relavent_sources = await asyncio.to_thread(self._rag.retrieve, rag_sources, query, page_k_doc)
-            relavent_sources = self._prioritize_table_chunks(rag_sources, relavent_sources)
-            self._log_chunks("[RAG]", web_source["title"], relavent_sources)
-            relavent_sources = await asyncio.to_thread(
-                self._merger.merge, rag_sources, relavent_sources, merge_table, merge_neighbor
-            )
-            if relavent_sources:
-                self._log_chunks("[Merge]", web_source["title"], relavent_sources)
-            if chunk_rerank_enabled:
-                relavent_sources = await asyncio.to_thread(
-                    self._chunk_ranker.rerank_chunks, relavent_sources, query, chunk_score_threshold
-                )
-                self._log_chunks("[ChunkRerank]", web_source["title"], relavent_sources)
-            return relavent_sources
+        loop = asyncio.get_event_loop()
         
-        # Chạy RAG processing song song cho tất cả web_sources
-        rag_tasks = [
-            asyncio.create_task(process_rag_for_source(web_source, page_k_doc))
-            for web_source, page_k_doc in zip(web_sources, page_k_docs)
+        def process_single_source(web_source: WebSource, page_k_doc: int) -> list[RagSource]:
+            """Sync function to run in thread pool"""
+            rag_sources = self._splitter.split(web_source)
+            if not rag_sources:
+                return []
+            relavent = self._rag.retrieve(rag_sources, query, page_k_doc)
+            relavent = self._prioritize_table_chunks(rag_sources, relavent)
+            relavent = self._merger.merge(rag_sources, relavent, merge_table, merge_neighbor)
+            if chunk_rerank_enabled and relavent:
+                relavent = self._chunk_ranker.rerank_chunks(relavent, query, chunk_score_threshold)
+            return relavent
+        
+        # Run all in parallel using thread pool
+        tasks = [
+            loop.run_in_executor(self._thread_pool, process_single_source, ws, kd)
+            for ws, kd in zip(web_sources, page_k_docs)
         ]
-        rag_sources_list = await asyncio.gather(*rag_tasks)
+        rag_sources_list = await asyncio.gather(*tasks)
         
         self.logger.end("RAG")
-        return rag_sources_list
+        return list(rag_sources_list)
     async def _merge_rag_source(
         self,
-        rag_sources_list_list: list[list[list[RagSource]]]
+        rag_sources_list_list: list[list[list[RagSource]]],
+        query: str
     ) -> list[RagSource]:
-        """Combine all ragsource, remove duplicate chunks"""
-        import json
-        # with open("log.json", 'w', encoding='utf-8') as file:
-        #     file.write(json.dumps(rag_sources_list_list, ensure_ascii=False))
+        """Combine all ragsource, deduplicate, rank, compress"""
+        # Step 1: Flatten and remove exact duplicates by (url, chunk_index)
         url_indexes: dict[str, set[int]] = {}
-        final_rag_sources: list[RagSource] = []
+        all_chunks: list[RagSource] = []
         for rag_sources_list in rag_sources_list_list:
             for rag_sources in rag_sources_list:
                 for rag_source in rag_sources:
                     chunk_index = rag_source["chunk_index"]
-                    if rag_source["url"] not in url_indexes:
-                        print(rag_source["url"])
-                        url_indexes[rag_source["url"]] = set([chunk_index])
-                        final_rag_sources.append(rag_source)
-                    else:
-                        indexes = url_indexes[rag_source["url"]]
-                        if chunk_index not in indexes:
-                            indexes.add(chunk_index)
-                            final_rag_sources.append(rag_source)
-        return final_rag_sources
+                    url = rag_source["url"]
+                    if url not in url_indexes:
+                        url_indexes[url] = {chunk_index}
+                        all_chunks.append(rag_source)
+                    elif chunk_index not in url_indexes[url]:
+                        url_indexes[url].add(chunk_index)
+                        all_chunks.append(rag_source)
+        
+        # Step 2: Apply chunk processor (dedupe, rank, compress)
+        processed = await asyncio.get_event_loop().run_in_executor(
+            self._thread_pool,
+            self._chunk_processor.process,
+            all_chunks,
+            query
+        )
+        
+        self.logger.log(f"[ChunkProcessor] {len(all_chunks)} -> {len(processed)} chunks")
+        return processed
     async def _merge_web_sources(
         self,
         web_sources_list: list[list[WebSource]]
@@ -560,7 +514,7 @@ class DataRetrieverPipeline:
         merge_table = params.get("merge_table", True)
         merge_neighbor = params.get("merge_neighbor", True)
         chunk_score_threshold = params.get("chunk_score_threshold", 0.5)
-        chunk_rerank_enabled = params.get("chunk_rerank", False)
+        chunk_rerank_enabled = params.get("chunk_rerank", True)
         k_docs = params.get("k_docs", 5) # Todo: Split by query priority
         
         rag_sources: list[RagSource] = []

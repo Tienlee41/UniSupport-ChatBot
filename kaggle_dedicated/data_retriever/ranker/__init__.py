@@ -1,2 +1,3 @@
 from .chunk_ranker import ChunkRanker
 from .page_ranker_protocol import PageRerankModelProtocol
+from .chunk_processor import ChunkProcessor

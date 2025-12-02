@@ -1,89 +1,62 @@
-from typing import Any
+import re
 from .schema import RagSource
 
-PAGE_HEADER_TEMPLATE = "**Nguồn**: [**{title}**]({url})"
-FILE_HEADER_TEMPLATE = "**Tài liệu**: [{title}]({url})"
-CHUNK_SEPARATOR = "\n---\n"
-
 class SourceFormat:
-    def __init__(self, use_separators: bool = True) -> None:
-        """
-        Format RagSource to text for LLM context.
-        
-        Args:
-            use_separators: If True, add clear separators between chunks from different sources
-        """
+    """Format RAG sources to compact LLM context"""
+    
+    def __init__(self, use_separators: bool = True, compact: bool = True) -> None:
         self.use_separators = use_separators
+        self.compact = compact
     
     def __call__(self, sources: list[RagSource]) -> str:
-        """Format `RagSource` to text. Input list should not be shuffled (Order by page)."""
-        if len(sources) == 0: 
+        if not sources:
             return ""
         
+        # Group by URL
+        url_groups: dict[str, list[RagSource]] = {}
+        for s in sources:
+            url_groups.setdefault(s["url"], []).append(s)
+        
         result: list[str] = []
-        main_page_url = None
-        main_file_url = None
-        page_buffer: list[str] = []
-        file_buffer: list[str] = []
         
-        for index, source in enumerate(sources):
-            page_url = source["url"]
+        for idx, (url, chunks) in enumerate(url_groups.items(), 1):
+            chunks = sorted(chunks, key=lambda x: x["chunk_index"])
+            title = chunks[0]["title"][:60]  # Truncate long titles
             
-            if main_page_url == page_url:
-                if "file_url" not in source:
-                    # Page content chunk
-                    page_buffer.append(source["text"])
-                else:
-                    # File content chunk
-                    file_url = source["file_url"]
-                    if main_file_url == file_url:
-                        file_buffer.append(source["text"])
-                    else:
-                        # New file, flush previous file
-                        if file_buffer:
-                            page_buffer.extend(file_buffer)
-                            if self.use_separators:
-                                page_buffer.append("")
-                        prefix = FILE_HEADER_TEMPLATE.format(
-                            title=source.get("file_title", ""),
-                            url=source.get("file_url", "")
-                        )
-                        file_buffer = [prefix, source["text"]]
-                        main_file_url = file_url
+            # Compact header
+            if self.compact:
+                result.append(f"[{idx}] {title}")
+                result.append(f"URL: {url}")
             else:
-                # New page, flush previous page
-                if file_buffer:
-                    page_buffer.extend(file_buffer)
-                    file_buffer.clear()
-                    if self.use_separators:
-                        page_buffer.append("")
-                
-                if page_buffer:
-                    result.extend(page_buffer)
-                    if self.use_separators and index < len(sources) - 1:
-                        result.append(CHUNK_SEPARATOR)
-                
-                prefix = PAGE_HEADER_TEMPLATE.format(
-                    title=source["title"],
-                    url=source["url"]
-                )
-                page_buffer = [prefix, source["text"]]
-                main_page_url = page_url
-                main_file_url = None
+                result.append(f"### [{title}]({url})")
+            
+            # Combine chunks, prioritize tables
+            tables = []
+            texts = []
+            for chunk in chunks:
+                text = chunk["text"].strip()
+                if "[BANG]" in text or text.count("|") >= 3:
+                    tables.append(text)
+                else:
+                    texts.append(text)
+            
+            # Add texts first (context), then tables (data)
+            for t in texts:
+                result.append(t)
+            for t in tables:
+                result.append(t)
+            
+            if self.use_separators:
+                result.append("---")
         
-        # Flush remaining buffers
-        if file_buffer:
-            page_buffer.extend(file_buffer)
-        
-        if page_buffer:
-            result.extend(page_buffer)
-        
-        # Join with appropriate spacing
         formatted = "\n\n".join(result)
         
-        # Normalize excessive newlines (max 2 consecutive)
-        import re
+        # Cleanup
         formatted = re.sub(r'\n{3,}', '\n\n', formatted)
+        formatted = re.sub(r'(\[BANG\]\s*)+', '[BANG]\n', formatted)
+        formatted = re.sub(r'\[BANG\]\s*\[BANG\]', '[BANG]', formatted)
+        # Remove empty table markers
+        formatted = re.sub(r'\[BANG\]\s*\n\s*---', '---', formatted)
         
-        return formatted
+        return formatted.strip()
             
