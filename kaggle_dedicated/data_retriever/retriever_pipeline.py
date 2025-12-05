@@ -333,7 +333,7 @@ class DataRetrieverPipeline:
         
         if crawl_results:
             # Chỉ gửi TOP k_pages URL (theo thứ tự đã rerank) sang ScrapingBee
-            max_pages = min(k_pages, len(crawl_results))
+            max_pages = min(k_pages * len(search_results_list), len(crawl_results))
             self.logger.log(f"[Download] Crawling {max_pages} URLs (from {len(crawl_results)} candidates)...")
             html_list = await self._page_downloader.download(
                 crawl_results, max_pages, include_pdf, include_image
