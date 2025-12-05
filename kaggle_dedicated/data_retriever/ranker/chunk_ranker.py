@@ -1,4 +1,5 @@
 from sentence_transformers import CrossEncoder
+import torch
 
 from ..schema import RagSource
 from ..config import ChunkRankerConfig
@@ -7,12 +8,26 @@ class ChunkRanker:
     """Cross-encoder reranker for Vietnamese"""
     def __init__(self, chunk_config: ChunkRankerConfig) -> None:
         self.chunk_config = chunk_config
+        # Auto-detect device: use CPU if CUDA is out of memory, otherwise use configured device
+        device = chunk_config.device
+        if device == "cuda" and torch.cuda.is_available():
+            try:
+                # Try to allocate a small tensor to check if CUDA has memory
+                test_tensor = torch.zeros(1).cuda()
+                del test_tensor
+                torch.cuda.empty_cache()
+            except RuntimeError:
+                # CUDA out of memory, fallback to CPU
+                device = "cpu"
+                print(f"[ChunkRanker] CUDA out of memory, falling back to CPU")
+        
         self.ranker = CrossEncoder(
             chunk_config.ranker_name, 
             max_length=chunk_config.max_length,
-            device=chunk_config.device
+            device=device
         )
-        print(f"[ChunkRanker] Loaded model: {chunk_config.ranker_name}")
+        self.device = device  # Store actual device used
+        print(f"[ChunkRanker] Loaded model: {chunk_config.ranker_name} on {device}")
     
     def rerank_chunks(self, sources: list[RagSource], query: str, relative_threshold: float = 0.5) -> list[RagSource]:
         """Perform cross-encoder rerank (Per page)."""
@@ -26,16 +41,24 @@ class ChunkRanker:
         pairs = [(query, source["text"]) for source in sources]
         
         # Get scores from cross-encoder
+        # Clear CUDA cache before prediction to avoid OOM
+        if self.device == "cuda" and torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        
         scores = self.ranker.predict(pairs)
+        
+        # Clear cache after prediction
+        if self.device == "cuda" and torch.cuda.is_available():
+            torch.cuda.empty_cache()
         
         # Combine sources with scores
         scored_sources = list(zip(sources, scores))
         
-        # Calculate threshold
+        # Use fixed absolute threshold of 0.5 instead of relative threshold
         max_score = max(scores) if scores.size > 0 else 0
-        score_threshold = 0 if max_score <= 0 else max_score * relative_threshold
+        score_threshold = 0.5  # Fixed absolute threshold
         
-        print(f"[ChunkRanker] Max score: {max_score:.4f}, Threshold: {score_threshold:.4f}")
+        print(f"[ChunkRanker] Max score: {max_score:.4f}, Threshold: {score_threshold:.4f} (fixed)")
         
         # Log top scores
         sorted_by_score = sorted(scored_sources, key=lambda x: x[1], reverse=True)
