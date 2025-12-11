@@ -323,7 +323,8 @@ KEYWORDS_PREFIX_X = """CHIẾN LƯỢC TÌM KIẾM:
     Nếu câu hỏi chung chung không liên quan đến trường cụ thể nào, thì không cần lấy tên viết tắt, đồng thời luôn sử dụng web search.
 3. **Xác định từ khóa tìm kiếm**:
     - Đối với tìm trên local DB: dùng 1 trong 4 từ khóa sau: "thong_tin_chung" (đối với các câu hỏi liên quan đến thông tin chung của trường như địa chỉ, thông tin liên hệ,...), "diem_chuan" (đối với các câu hỏi liên quan đến điểm chuẩn), "hoc_phi" (đối với các câu hỏi liên quan đến học phí của trường) và "tuyen_sinh" (đối với các câu hỏi liên quan đến thông tin tuyển sinh, các ngành đào tạo của trường).
-    - Đối với tìm trên web: tóm tắt câu hỏi thành từ khóa chính làm sao để khi tìm kiếm các trang hiện ra sẽ có chứa thông tin cần thiết để trả lời câu hỏi. Ví dụ như hỏi số Tiến sĩ của trường thì không thể tìm trực tiếp ra số tiến sĩ được, mà phải tìm "danh sách giảng viên của trường", từ thông tin danh sách giảng viên LLM sẽ đếm số tiến sĩ.
+    - **Đối với câu hỏi về kiểm định và thông tin công khai**: LUÔN sử dụng web_search (không có trong local DB). Các câu hỏi về kiểm định cơ sở giáo dục, kiểm định chương trình đào tạo, báo cáo tự đánh giá, công khai tài chính, công khai đội ngũ giảng viên, cơ sở vật chất... đều cần tìm trên web. Từ khóa nên bao gồm: tên trường (viết tắt) + "kiểm định" hoặc "công khai" + loại thông tin cụ thể.
+    - Đối với tìm trên web (các câu hỏi khác): tóm tắt câu hỏi thành từ khóa chính làm sao để khi tìm kiếm các trang hiện ra sẽ có chứa thông tin cần thiết để trả lời câu hỏi. Ví dụ như hỏi số Tiến sĩ của trường thì không thể tìm trực tiếp ra số tiến sĩ được, mà phải tìm "danh sách giảng viên của trường", từ thông tin danh sách giảng viên LLM sẽ đếm số tiến sĩ.
     Một số ví dụ cho từ khóa tìm trên web:
     "danh sách giảng viên viện trí tuệ nhân tạo trường đại học công nghệ đhqg hà nội" → "danh sách giảng viên viện trí tuệ nhân tạo UET"
     "học phần chương trình đào tạo ngành trí tuệ nhân tạo UET" → "chương trình đào tạo ngành trí tuệ nhân tạo UET"
@@ -349,8 +350,95 @@ KEYWORDS_PREFIX_X = """CHIẾN LƯỢC TÌM KIẾM:
     "năm 2025 đại học ngoại thương tuyển sinh bao nhiêu ngành đào tạo" → {"type_search": "local_db", "key_word": [{"school_id":"FTU", "section":"tuyen_sinh"}]}
     "bảng xếp hạng các trường đại học ở việt nam năm 2025" → {"type_search": "web_search", "key_word": ["bảng xếp hạng các trường đại học ở việt nam năm 2025"]}
     "Học viện công nghệ bưu chính viễn thông có bao nhiêu sinh viên, so với UET thì sao" → {"type_search": "web_search", "key_word": ["số lượng sinh viên PTIT", "số lượng sinh viên UET"]}
+    "Trường UET đã được kiểm định cơ sở giáo dục chưa?" → {"type_search": "web_search", "key_word": ["kiểm định cơ sở giáo dục UET"]}
+    "Ngành CNTT trường UET đã được kiểm định chưa? Kết quả đạt mức mấy?" → {"type_search": "web_search", "key_word": ["kiểm định chương trình đào tạo ngành CNTT UET", "kết quả kiểm định ngành công nghệ thông tin UET"]}
+    "Trường HUST có công khai báo cáo thu chi hàng năm không?" → {"type_search": "web_search", "key_word": ["báo cáo thu chi HUST", "thông tin công khai tài chính đại học bách khoa hà nội"]}
+    "Danh sách các ngành được kiểm định tại trường UET?" → {"type_search": "web_search", "key_word": ["danh sách ngành được kiểm định UET"]}
+    "Giấy chứng nhận kiểm định của trường HUST còn hiệu lực đến khi nào?" → {"type_search": "web_search", "key_word": ["giấy chứng nhận kiểm định HUST", "thời hạn kiểm định đại học bách khoa hà nội"]}
+    "Tổ chức nào kiểm định cơ sở giáo dục cho trường UET?" → {"type_search": "web_search", "key_word": ["tổ chức kiểm định UET"]}
+    "Báo cáo tự đánh giá CTĐT ngành CNTT trường UET có được công khai không?" → {"type_search": "web_search", "key_word": ["báo cáo tự đánh giá chương trình đào tạo ngành CNTT UET"]}
     ...
 Chỉ trả về từ khóa, không giải thích."""
+
+# Quy tắc xử lý câu hỏi về KIỂM ĐỊNH và THÔNG TIN CÔNG KHAI
+
+KEYWORDS_ACCREDITATION_RULES = """
+## Xử lý câu hỏi về Kiểm định và Thông tin công khai:
+
+### 1. Nhận diện câu hỏi kiểm định:
+Các câu hỏi liên quan đến:
+- **Kiểm định cơ sở giáo dục**: "Trường X đã được kiểm định chưa?", "Giấy chứng nhận kiểm định của trường X?", "Tổ chức nào kiểm định trường X?"
+- **Kiểm định chương trình đào tạo**: "Ngành Y trường X đã được kiểm định chưa?", "Kết quả kiểm định ngành Y?", "Danh sách các ngành được kiểm định tại trường X?"
+- **Thông tin công khai**: "Trường X có công khai báo cáo tự đánh giá không?", "Báo cáo thu chi của trường X?", "Trường X có công khai danh sách giảng viên không?"
+- **Cơ sở vật chất, đội ngũ, tài chính**: "Cơ sở vật chất trường X?", "Số lượng giảng viên trường X?", "Tài chính trường X có minh bạch không?"
+
+### 2. Quy tắc tạo từ khóa cho câu hỏi kiểm định:
+- **Luôn sử dụng web_search** cho các câu hỏi về kiểm định và thông tin công khai (không có trong local DB)
+- **Từ khóa nên bao gồm**: tên trường (viết tắt nếu có) + loại thông tin + "kiểm định" hoặc "công khai"
+- **Ví dụ từ khóa hiệu quả**:
+  - "kiểm định cơ sở giáo dục UET"
+  - "kiểm định chương trình đào tạo ngành CNTT UET"
+  - "báo cáo tự đánh giá HUST"
+  - "thông tin công khai trường đại học bách khoa hà nội"
+  - "giấy chứng nhận kiểm định HUST"
+  - "danh sách ngành được kiểm định UET"
+
+### 3. Ví dụ cụ thể cho câu hỏi kiểm định:
+
+**Ví dụ 1:**
+Câu hỏi: "Trường UET đã được kiểm định cơ sở giáo dục chưa?"
+→ Phân tích: Câu hỏi về kiểm định cơ sở giáo dục của UET
+→ Từ khóa: "kiểm định cơ sở giáo dục UET" hoặc "kiểm định chất lượng UET"
+→ Trả về: {"type_search": "web_search", "key_word": ["kiểm định cơ sở giáo dục UET"]}
+
+**Ví dụ 2:**
+Câu hỏi: "Ngành Công nghệ thông tin trường UET đã được kiểm định chưa? Kết quả đạt mức mấy?"
+→ Phân tích: Câu hỏi về kiểm định chương trình đào tạo ngành CNTT của UET
+→ Từ khóa: "kiểm định chương trình đào tạo ngành công nghệ thông tin UET" hoặc "kết quả kiểm định ngành CNTT UET"
+→ Trả về: {"type_search": "web_search", "key_word": ["kiểm định chương trình đào tạo ngành công nghệ thông tin UET", "kết quả kiểm định ngành CNTT UET"]}
+
+**Ví dụ 3:**
+Câu hỏi: "Trường HUST có công khai báo cáo thu chi hàng năm không?"
+→ Phân tích: Câu hỏi về thông tin công khai tài chính của HUST
+→ Từ khóa: "báo cáo thu chi HUST" hoặc "thông tin công khai tài chính đại học bách khoa hà nội"
+→ Trả về: {"type_search": "web_search", "key_word": ["báo cáo thu chi HUST", "thông tin công khai tài chính đại học bách khoa hà nội"]}
+
+**Ví dụ 4:**
+Câu hỏi: "Danh sách các ngành được kiểm định tại trường UET?"
+→ Phân tích: Câu hỏi về danh sách ngành đã được kiểm định
+→ Từ khóa: "danh sách ngành được kiểm định UET" hoặc "các ngành đã kiểm định trường đại học công nghệ"
+→ Trả về: {"type_search": "web_search", "key_word": ["danh sách ngành được kiểm định UET"]}
+
+**Ví dụ 5:**
+Câu hỏi: "Giấy chứng nhận kiểm định của trường HUST còn hiệu lực đến khi nào?"
+→ Phân tích: Câu hỏi về thời hạn hiệu lực giấy chứng nhận kiểm định
+→ Từ khóa: "giấy chứng nhận kiểm định HUST" hoặc "thời hạn kiểm định đại học bách khoa hà nội"
+→ Trả về: {"type_search": "web_search", "key_word": ["giấy chứng nhận kiểm định HUST", "thời hạn kiểm định đại học bách khoa hà nội"]}
+
+**Ví dụ 6:**
+Câu hỏi: "Tổ chức nào kiểm định cơ sở giáo dục cho trường UET?"
+→ Phân tích: Câu hỏi về tổ chức thực hiện kiểm định
+→ Từ khóa: "tổ chức kiểm định UET" hoặc "đơn vị kiểm định trường đại học công nghệ"
+→ Trả về: {"type_search": "web_search", "key_word": ["tổ chức kiểm định UET"]}
+
+**Ví dụ 7:**
+Câu hỏi: "Trường UET có công khai danh sách giảng viên không?"
+→ Phân tích: Câu hỏi về công khai thông tin đội ngũ giảng viên
+→ Từ khóa: "danh sách giảng viên UET" hoặc "công khai đội ngũ giảng viên trường đại học công nghệ"
+→ Trả về: {"type_search": "web_search", "key_word": ["danh sách giảng viên UET", "công khai đội ngũ giảng viên trường đại học công nghệ"]}
+
+**Ví dụ 8:**
+Câu hỏi: "Báo cáo tự đánh giá CTĐT ngành CNTT trường UET có được công khai không?"
+→ Phân tích: Câu hỏi về công khai báo cáo tự đánh giá chương trình đào tạo
+→ Từ khóa: "báo cáo tự đánh giá chương trình đào tạo ngành CNTT UET" hoặc "báo cáo tự đánh giá CTĐT công nghệ thông tin trường đại học công nghệ"
+→ Trả về: {"type_search": "web_search", "key_word": ["báo cáo tự đánh giá chương trình đào tạo ngành CNTT UET"]}
+
+### 4. Lưu ý quan trọng:
+- **Tất cả câu hỏi về kiểm định và thông tin công khai đều sử dụng web_search** (không có trong local DB)
+- **Ưu tiên dùng tên viết tắt** của trường trong từ khóa (UET, HUST, NEU, FTU, ...)
+- **Kết hợp nhiều từ khóa** nếu câu hỏi phức tạp (ví dụ: vừa hỏi về kiểm định vừa hỏi về kết quả)
+- **Từ khóa nên ngắn gọn, cụ thể**, tránh từ thừa nhưng giữ lại các từ quan trọng: "kiểm định", "công khai", "báo cáo", "giấy chứng nhận"
+"""
 # """ 
 # Gợi ý loại queries cần cover (khi áp dụng cho tuyển sinh đại học):
 #  - Thông báo tuyển sinh chính thức + năm + tên trường.

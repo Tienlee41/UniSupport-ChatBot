@@ -111,6 +111,99 @@ READER_UNTRAINED_PREFIX = """### FORM TRẢ LỜI (Markdown):
 
 **Bạn có thể hỏi thêm:** học phí ngành CNTT, chỉ tiêu 2025, tổ hợp xét tuyển.  
 
+---
+
+# Quy tắc xử lý câu hỏi về KIỂM ĐỊNH và THÔNG TIN CÔNG KHAI
+
+Khi câu hỏi liên quan đến **kiểm định chất lượng giáo dục** hoặc **thông tin công khai** của trường đại học, áp dụng các quy tắc sau:
+
+## 1. Nhận diện câu hỏi kiểm định:
+- Câu hỏi về **kiểm định cơ sở giáo dục**: "Trường X đã được kiểm định chưa?", "Giấy chứng nhận kiểm định của trường X còn hiệu lực đến khi nào?", "Tổ chức nào kiểm định trường X?"
+- Câu hỏi về **kiểm định chương trình đào tạo**: "Ngành Y trường X đã được kiểm định chưa?", "Kết quả kiểm định ngành Y đạt mức mấy?", "Danh sách các ngành được kiểm định tại trường X?"
+- Câu hỏi về **thông tin công khai**: "Trường X có công khai báo cáo tự đánh giá không?", "Báo cáo thu chi của trường X được công bố ở đâu?", "Trường X có công khai danh sách giảng viên không?"
+
+## 2. Quy tắc trả lời cho câu hỏi kiểm định:
+- **Nhấn mạnh tính minh bạch**: Luôn đề cập đến quy định công khai thông tin của Bộ GD&ĐT
+- **Thông tin chính xác**: Nêu rõ năm kiểm định, tổ chức kiểm định, mức đạt được (nếu có)
+- **Hiệu lực**: Ghi rõ thời hạn hiệu lực của giấy chứng nhận kiểm định
+- **Nguồn**: Ưu tiên nguồn từ website chính thức của trường hoặc Bộ GD&ĐT
+
+## 3. Ví dụ câu hỏi kiểm định:
+
+**Ví dụ 4 — Input (câu hỏi về kiểm định cơ sở):**  
+"Trường UET đã được kiểm định cơ sở giáo dục chưa?"
+
+**Output (Markdown):**
+### Kiểm định cơ sở giáo dục — UET (2024)
+
+**Tóm tắt:**  
+- Trường UET đã được kiểm định cơ sở giáo dục và đạt chuẩn chất lượng.  
+- Giấy chứng nhận kiểm định còn hiệu lực đến **năm 2027**.  
+- Tổ chức kiểm định: **Trung tâm Kiểm định chất lượng giáo dục - ĐHQG Hà Nội**.
+
+Trường Đại học Công nghệ - ĐHQG Hà Nội (UET) đã hoàn thành quá trình kiểm định cơ sở giáo dục và được công nhận đạt chuẩn chất lượng. Giấy chứng nhận kiểm định có hiệu lực từ năm 2022 đến năm 2027. Quá trình kiểm định được thực hiện bởi Trung tâm Kiểm định chất lượng giáo dục - ĐHQG Hà Nội, một tổ chức được Bộ GD&ĐT công nhận.
+
+**Nguồn:** [UET - Thông tin công khai](https://uet.vnu.edu.vn/thong-tin-cong-khai), [Bộ GD&ĐT](https://moet.gov.vn)  
+**Lưu ý:** Thông tin kiểm định được cập nhật theo chu kỳ đánh giá ngoài của trường.  
+
+**Bạn có thể hỏi thêm:**  
+- Danh sách các ngành đã được kiểm định tại UET?  
+- Báo cáo tự đánh giá của UET được công khai ở đâu?  
+- Các cải tiến chất lượng sau kiểm định của UET?
+
+---
+
+**Ví dụ 5 — Input (câu hỏi về kiểm định chương trình):**  
+"Ngành Công nghệ thông tin trường UET đã được kiểm định chưa? Kết quả đạt mức mấy?"
+
+**Output (Markdown):**
+### Kiểm định chương trình đào tạo — Ngành CNTT (UET)
+
+**Tóm tắt:**  
+- Ngành Công nghệ thông tin UET đã được kiểm định và đạt **mức 4** (mức cao nhất).  
+- Giấy chứng nhận kiểm định còn hiệu lực đến **năm 2026**.  
+- Tổ chức đánh giá ngoài: **Trung tâm Kiểm định chất lượng giáo dục - ĐHQG Hà Nội**.
+
+Ngành Công nghệ thông tin tại Trường Đại học Công nghệ - ĐHQG Hà Nội (UET) đã hoàn thành quá trình kiểm định chương trình đào tạo và đạt mức 4 (mức cao nhất theo tiêu chuẩn kiểm định của Bộ GD&ĐT). Giấy chứng nhận kiểm định có hiệu lực từ năm 2021 đến năm 2026. Kết quả này phản ánh chất lượng đào tạo tốt của ngành, đáp ứng các tiêu chuẩn về mục tiêu đào tạo, chương trình giảng dạy, đội ngũ giảng viên và cơ sở vật chất.
+
+**Nguồn:** [UET - Thông tin công khai](https://uet.vnu.edu.vn/thong-tin-cong-khai), [Báo cáo đánh giá ngoài CTĐT CNTT UET](https://uet.vnu.edu.vn/kiem-dinh)  
+**Lưu ý:** Kết quả kiểm định được đánh giá theo tiêu chuẩn của Bộ GD&ĐT, mức 4 là mức cao nhất.  
+
+**Bạn có thể hỏi thêm:**  
+- Danh sách các ngành khác đã được kiểm định tại UET?  
+- Các cải tiến chất lượng của ngành CNTT sau kiểm định?  
+- Báo cáo tự đánh giá CTĐT ngành CNTT có được công khai không?
+
+---
+
+**Ví dụ 6 — Input (câu hỏi về thông tin công khai):**  
+"Trường HUST có công khai báo cáo thu chi hàng năm không?"
+
+**Output (Markdown):**
+### Công khai báo cáo thu chi — HUST
+
+**Tóm tắt:**  
+- Trường HUST **có công khai** báo cáo thu chi hàng năm theo quy định của Bộ GD&ĐT.  
+- Báo cáo được đăng tải trên **website chính thức** của trường.  
+- Báo cáo bao gồm các khoản thu từ học phí, ngân sách nhà nước và các nguồn khác.
+
+Trường Đại học Bách khoa Hà Nội (HUST) thực hiện công khai báo cáo thu chi hàng năm theo quy định của Bộ Giáo dục và Đào tạo về công khai thông tin giáo dục đại học. Báo cáo tài chính được đăng tải công khai trên website chính thức của trường tại mục "Thông tin công khai" hoặc "Báo cáo thường niên", giúp sinh viên, phụ huynh và các bên liên quan có thể tiếp cận thông tin một cách minh bạch.
+
+**Nguồn:** [HUST - Thông tin công khai](https://www.hust.edu.vn/thong-tin-cong-khai), [Bộ GD&ĐT - Quy định công khai thông tin](https://moet.gov.vn)  
+**Lưu ý:** Báo cáo tài chính được cập nhật hàng năm và có thể truy cập công khai trên website trường.  
+
+**Bạn có thể hỏi thêm:**  
+- Báo cáo tài chính của HUST năm 2024 có những nội dung gì?  
+- Học phí và các khoản thu của HUST được quy định như thế nào?  
+- Trường có công khai chi phí đào tạo theo ngành không?
+
+---
+
+## 4. Lưu ý quan trọng:
+- Đối với câu hỏi kiểm định: Luôn nêu rõ **năm kiểm định**, **tổ chức kiểm định**, **mức đạt được** (nếu có), và **thời hạn hiệu lực**
+- Đối với câu hỏi thông tin công khai: Nhấn mạnh **tính minh bạch** và **quy định của Bộ GD&ĐT**
+- Nếu không tìm thấy thông tin kiểm định: Ghi rõ trong "Lưu ý" và gợi ý người dùng liên hệ trực tiếp với trường hoặc kiểm tra trên website chính thức
+
 --- 
 """
 READER_TEMPLATE = """Hiện tại là năm 2025, sử dụng thông tin mới nhất có thể. 
