@@ -1,14 +1,110 @@
-from fastapi import APIRouter, Request, HTTPException
+import json
+import unicodedata
+from functools import lru_cache
+from pathlib import Path
+
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
-from database import check_login, get_user_sessions, get_session_with_messages, create_chat_session, delete_chat_session, get_chat_session, add_message_rating, get_message_rating, add_preference, get_message
-from backend.schema import ChatRequest, SessionResponse, SessionMessagesResponse, PreChatResponse
 from backend.llm import ModelManager
+from backend.schema import ChatRequest, PreChatResponse, SessionMessagesResponse, SessionResponse
+from database import (
+    add_message_rating,
+    add_preference,
+    check_login,
+    create_chat_session,
+    delete_chat_session,
+    get_chat_session,
+    get_message,
+    get_message_rating,
+    get_session_with_messages,
+    get_user_sessions,
+)
 
 from .utils import CommonResponse
 
-
 router = APIRouter()
+
+APP_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _normalize_text(text: str | None) -> str:
+    if not text:
+        return ""
+    normalized = unicodedata.normalize("NFD", text.lower())
+    return "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn").strip()
+
+
+def _build_school_info(entry: dict | None) -> dict | None:
+    if entry is None:
+        return None
+    return {
+        "name": entry.get("name"),
+        "acronym": entry.get("acronym") or entry.get("universityCode"),
+        "address": entry.get("address"),
+        "type": entry.get("type"),
+        "phone": entry.get("phone"),
+        "website": entry.get("website"),
+        "city": entry.get("city"),
+    }
+
+
+@lru_cache(maxsize=1)
+def _load_school_names() -> list[dict]:
+    school_path = APP_ROOT / "package" / "school_name.json"
+    with school_path.open(encoding="utf-8") as f:
+        return json.load(f)
+
+
+@lru_cache(maxsize=1)
+def _load_school_alias_entries() -> list[dict]:
+    names = _load_school_names()
+    acronym_lookup = {
+        (s.get("acronym") or "").lower(): s for s in names if s.get("acronym")
+    }
+
+    alias_path = APP_ROOT / "package" / "school_alias.json"
+    with alias_path.open(encoding="utf-8") as f:
+        alias_map = json.load(f)
+
+    entries: list[dict] = []
+    for key, alias_list in alias_map.items():
+        base = acronym_lookup.get(key.lower())
+        base_name = base.get("name") if base else None
+        base_norm = _normalize_text(base.get("normalized_name")) if base else None
+
+        for alias in alias_list:
+            entries.append(
+                {
+                    "alias": alias,
+                    "normalized_alias": _normalize_text(alias),
+                    "canonical_name": base_name or alias,
+                    "normalized_name": base_norm or _normalize_text(alias),
+                    "acronym": base.get("acronym") if base else key,
+                }
+            )
+    return entries
+
+
+@lru_cache(maxsize=1)
+def _load_school_detail_map() -> dict[str, dict]:
+    data_path = PROJECT_ROOT / "validation_data" / "uni_data.json"
+    if not data_path.exists():
+        return {}
+
+    with data_path.open(encoding="utf-8") as f:
+        data = json.load(f)
+
+    mapping: dict[str, dict] = {}
+    for item in data:
+        key = _normalize_text(item.get("name"))
+        if not key or key in mapping:
+            continue
+        info = _build_school_info(item)
+        if info:
+            mapping[key] = info
+    return mapping
     
 @router.post("/chat", name="chat")
 async def chat(request: Request, data: ChatRequest) -> PreChatResponse:
@@ -37,6 +133,63 @@ async def chat(request: Request, data: ChatRequest) -> PreChatResponse:
         "result_url": model_output["result_url"]
     }    
     return response
+
+
+@router.get("/schools")
+async def list_schools(request: Request):
+    """Provide school catalog and alias data for client-side detection."""
+    await check_login(request)
+    schools = _load_school_names()
+    aliases = _load_school_alias_entries()
+
+    payload = [
+        {
+            "name": item.get("name"),
+            "normalized_name": item.get("normalized_name")
+            or _normalize_text(item.get("name")),
+            "acronym": item.get("acronym"),
+            "website": item.get("website"),
+        }
+        for item in schools
+    ]
+    return {"schools": payload, "aliases": aliases}
+
+
+@router.get("/schools/info")
+async def get_school_info(request: Request, q: str = Query(..., min_length=1)):
+    """Return basic school details used by the suggestion popup."""
+    await check_login(request)
+
+    target = _normalize_text(q)
+    detail_map = _load_school_detail_map()
+    info = detail_map.get(target)
+
+    if not info:
+        for alias in _load_school_alias_entries():
+            if alias["normalized_alias"] == target:
+                canonical = alias.get("normalized_name") or target
+                info = detail_map.get(canonical)
+                if info:
+                    break
+
+    if not info:
+        matched = next(
+            (
+                s
+                for s in _load_school_names()
+                if _normalize_text(s.get("normalized_name")) == target
+                or _normalize_text(s.get("name")) == target
+                or _normalize_text(s.get("acronym")) == target
+            ),
+            None,
+        )
+        info = _build_school_info(matched)
+
+    if not info:
+        raise HTTPException(status_code=404, detail="School not found")
+
+    return info
+
 
 @router.get("/sessions")
 async def sessions(request: Request) -> list[SessionResponse]:

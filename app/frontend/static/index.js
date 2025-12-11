@@ -5,6 +5,12 @@ let chatHistory = [];
 
 // Rating state management
 const ratedMessages = new Set(); // Track already rated messages
+const schoolState = {
+    catalog: [],
+    aliases: [],
+    mentioned: new Set(),
+    suggestionElement: null,
+};
 
 document.addEventListener('DOMContentLoaded', function() {
     // Prevent unwanted focus behavior
@@ -76,6 +82,170 @@ document.addEventListener('DOMContentLoaded', function() {
     const llmRerankCheckbox = document.getElementById('llm-rerank-checkbox');
     const simpleTimeLimit = document.getElementById('simple-time-limit');
     const simpleRetrieveMode = document.getElementById('simple-retrieve-mode');
+
+    // ===== School detection helpers =====
+    const normalizeText = (value = '') => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+    async function loadSchoolCatalog() {
+        try {
+            const response = await fetch('/schools');
+            if (!response.ok) return;
+            const data = await response.json();
+            schoolState.catalog = data.schools || [];
+            schoolState.aliases = data.aliases || [];
+        } catch (error) {
+            console.error('Không tải được danh sách trường:', error);
+        }
+    }
+
+    function findSchoolsInText(rawText) {
+        if (!rawText) return [];
+        const normalized = normalizeText(rawText);
+        const matches = [];
+
+        schoolState.catalog.forEach(school => {
+            const normName = school.normalized_name || normalizeText(school.name);
+            const acronym = school.acronym ? school.acronym.toLowerCase() : null;
+            if (normName && normalized.includes(normName)) {
+                matches.push(school);
+            } else if (acronym) {
+                const acronymRegex = new RegExp(`\\b${acronym}\\b`);
+                if (acronymRegex.test(normalized)) {
+                    matches.push(school);
+                }
+            }
+        });
+
+        schoolState.aliases.forEach(alias => {
+            if (alias.normalized_alias && normalized.includes(alias.normalized_alias)) {
+                matches.push({
+                    name: alias.canonical_name || alias.alias,
+                    normalized_name: alias.normalized_name || alias.normalized_alias,
+                    acronym: alias.acronym,
+                });
+            }
+        });
+
+        return matches;
+    }
+
+    function dismissSchoolSuggestion() {
+        if (schoolState.suggestionElement) {
+            schoolState.suggestionElement.classList.add('hide');
+            setTimeout(() => schoolState.suggestionElement?.remove(), 200);
+            schoolState.suggestionElement = null;
+        }
+    }
+
+    function recordSchoolMentions(text, { silent = false } = {}) {
+        if (!text || (!schoolState.catalog.length && !schoolState.aliases.length)) return;
+        const detected = findSchoolsInText(text);
+        const newOnes = [];
+
+        detected.forEach(item => {
+            const key = item.normalized_name || normalizeText(item.name);
+            if (key && !schoolState.mentioned.has(key)) {
+                schoolState.mentioned.add(key);
+                newOnes.push(item);
+            }
+        });
+
+        if (!silent && newOnes.length) {
+            showSchoolSuggestion(newOnes[0]);
+        }
+    }
+
+    async function fetchSchoolInfo(name) {
+        try {
+            const response = await fetch(`/schools/info?q=${encodeURIComponent(name)}`);
+            if (!response.ok) throw new Error('not found');
+            return await response.json();
+        } catch (error) {
+            console.error('Không lấy được thông tin trường:', error);
+            return null;
+        }
+    }
+
+    function showSchoolInfoModal(info) {
+        if (!info) {
+            alert('Không tìm thấy thông tin về trường này.');
+            return;
+        }
+
+        const modal = document.createElement('div');
+        modal.className = 'school-info-modal';
+        modal.innerHTML = `
+            <div class="school-info-card">
+                <div class="school-info-header">
+                    <div>
+                        <p class="school-info-label">Thông tin trường</p>
+                        <h3 class="school-info-title">${info.name || 'Trường chưa xác định'}</h3>
+                        ${info.acronym ? `<p class="school-info-sub">${info.acronym}</p>` : ''}
+                    </div>
+                    <button class="school-info-close" title="Đóng">&times;</button>
+                </div>
+                <div class="school-info-body">
+                    ${info.address ? `<div class="school-info-row"><span>Địa chỉ:</span><p>${info.address}</p></div>` : ''}
+                    ${info.city ? `<div class="school-info-row"><span>Khu vực:</span><p>${Array.isArray(info.city) ? info.city.join(', ') : info.city}</p></div>` : ''}
+                    ${info.type ? `<div class="school-info-row"><span>Loại hình:</span><p>${info.type}</p></div>` : ''}
+                    ${info.phone ? `<div class="school-info-row"><span>Liên hệ:</span><p>${info.phone}</p></div>` : ''}
+                    ${info.website ? `<div class="school-info-row"><span>Website:</span><p><a href="${info.website}" target="_blank" rel="noopener">Mở trang</a></p></div>` : ''}
+                </div>
+            </div>
+        `;
+
+        const closeModal = () => {
+            modal.classList.add('hide');
+            setTimeout(() => modal.remove(), 200);
+        };
+
+        modal.querySelector('.school-info-close')?.addEventListener('click', closeModal);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
+        document.addEventListener('keydown', function escHandler(e) {
+            if (e.key === 'Escape') {
+                closeModal();
+                document.removeEventListener('keydown', escHandler);
+            }
+        });
+
+        document.body.appendChild(modal);
+    }
+
+    function showSchoolSuggestion(school) {
+        dismissSchoolSuggestion();
+        const suggestion = document.createElement('div');
+        suggestion.className = 'school-suggestion';
+        suggestion.innerHTML = `
+            <div class="school-suggestion__content">
+                <div>
+                    <p class="school-suggestion__label">Gợi ý</p>
+                    <p class="school-suggestion__text">Bạn muốn tìm hiểu thông tin về <strong>${school.name || 'trường này'}</strong>?</p>
+                </div>
+                <div class="school-suggestion__actions">
+                    <button class="school-suggestion__btn primary">Xem thông tin</button>
+                    <button class="school-suggestion__btn ghost">Bỏ qua</button>
+                </div>
+            </div>
+        `;
+
+        suggestion.querySelector('.primary')?.addEventListener('click', async () => {
+            const info = await fetchSchoolInfo(school.name || '');
+            showSchoolInfoModal(info);
+            dismissSchoolSuggestion();
+        });
+
+        suggestion.querySelector('.ghost')?.addEventListener('click', dismissSchoolSuggestion);
+        document.body.appendChild(suggestion);
+        schoolState.suggestionElement = suggestion;
+    }
+
+    function rebuildMentionedSchools(messages) {
+        schoolState.mentioned.clear();
+        if (!Array.isArray(messages)) return;
+        messages.forEach(msg => recordSchoolMentions(msg.text, { silent: true }));
+    }
 
     // Handle slider switch clicks
     document.querySelectorAll('.slider-switch').forEach(switchElement => {
@@ -430,6 +600,8 @@ document.addEventListener('DOMContentLoaded', function() {
         clearChatMessages();
         showWelcomeScreen();
         document.getElementById('chat-title').textContent = 'UniAdmission ChatBot';
+        schoolState.mentioned.clear();
+        dismissSchoolSuggestion();
         
         // Remove active class from all sessions
         document.querySelectorAll('.chat-session').forEach(s => s.classList.remove('active'));
@@ -470,6 +642,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const message = userInput.value.trim();
         if (message === '') return;
+        recordSchoolMentions(message);
         
         // Get settings - check active model item first, then fallback to select
         const activeModelItem = document.querySelector('.model-item.active');
@@ -981,6 +1154,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const sources = message.web_sources || message.extra_data?.web_sources || null;
                 addMessage(message.text, message.role, sources);
             });
+            rebuildMentionedSchools(data.messages);
             
             // Mark session as active
             document.querySelectorAll('.chat-session').forEach(s => s.classList.remove('active'));
@@ -1273,6 +1447,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Initialize
     loadModels();
+    loadSchoolCatalog();
     loadChatHistory();
     
     // Update bot message spacing after loading history
