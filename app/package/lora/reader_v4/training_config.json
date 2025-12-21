@@ -1,0 +1,17 @@
+{
+  "model_name": "Qwen/Qwen3-4B",
+  "lora_r": 16,
+  "lora_alpha": 32,
+  "lora_dropout": 0.05,
+  "target_modules": [
+    "q_proj",
+    "k_proj",
+    "v_proj",
+    "o_proj"
+  ],
+  "batch_size": 1,
+  "gradient_accumulation_steps": 16,
+  "num_epochs": 2,
+  "max_length": 1024,
+  "learning_rate": 0.0002
+}

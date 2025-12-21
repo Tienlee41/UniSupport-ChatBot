@@ -77,6 +77,8 @@ import asyncio
 import enum
 import traceback
 import copy
+import re
+from datetime import datetime
 
 from typing import Protocol, AsyncGenerator, TypedDict
 class KeywordInfo(TypedDict):
@@ -232,9 +234,35 @@ class RouterRetriever:
         self.web_retriever = web_retriever
         self.local_retriever = local_retriever
         self.router = llm_router
+    def _auto_apply_time_filter(self, question: str, params: GenerationParams) -> None:
+        """Infer time filter (year) from question when user chưa set thủ công."""
+        if params.get("time_metric") or params.get("time_range"):
+            return
+        # Ưu tiên năm gần nhất được nhắc tới
+        year_candidates: list[int] = []
+        # Range dạng 2022-2023
+        for start, end in re.findall(r"(19\d{2}|20\d{2})\s*[-–]\s*(19\d{2}|20\d{2})", question):
+            year_candidates.extend([int(start), int(end)])
+        # Các năm đơn lẻ
+        for year_str in re.findall(r"\b(19\d{2}|20\d{2})\b", question):
+            year_candidates.append(int(year_str))
+        if not year_candidates:
+            return
+        current_year = datetime.now().year
+        past_years = [y for y in year_candidates if y <= current_year]
+        if not past_years:
+            return
+        target_year = max(past_years)
+        time_range = max(1, current_year - target_year + 1)
+        time_range = min(time_range, 10)  # tránh range quá rộng
+        params["time_metric"] = "y"
+        params["time_range"] = time_range
+        print(f"[AUTO TIME] Detected year {target_year} -> range={time_range}y")
     async def retrieve(self, question: str, params: GenerationParams) -> tuple[list[WebSource], list[RagSource]]:
         use_websearch = params.get("use_websearch", False) and params.get("max_query", 0) > 0 and params.get("k_docs", 0) > 0 and params.get("k_pages", 0) > 0
         use_localdb = params.get("use_localdb", False)
+        if use_websearch:
+            self._auto_apply_time_filter(question, params)
         if use_websearch and use_localdb:
             local_queries = await self.router.route(question, params)
             if len(local_queries) > 0:

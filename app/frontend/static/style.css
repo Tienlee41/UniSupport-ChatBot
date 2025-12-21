@@ -2552,3 +2552,190 @@ body {
         width: 100%;
     }
 }
+
+/* ============= SCHOOL SUGGESTION ============= */
+.school-suggestion {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    background: #0f172a;
+    color: #e5e7eb;
+    border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(15, 23, 42, 0.28);
+    padding: 16px 18px;
+    max-width: 360px;
+    width: 100%;
+    z-index: 1500;
+    transition: all 0.25s ease;
+}
+
+.school-suggestion.hide {
+    opacity: 0;
+    transform: translateY(12px);
+    pointer-events: none;
+}
+
+.school-suggestion__content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.school-suggestion__label {
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: #94a3b8;
+    margin-bottom: 4px;
+}
+
+.school-suggestion__text {
+    font-size: 15px;
+    line-height: 1.5;
+}
+
+.school-suggestion__actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.school-suggestion__btn {
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.school-suggestion__btn.primary {
+    background: #38bdf8;
+    color: #0b1220;
+    border-color: #38bdf8;
+}
+
+.school-suggestion__btn.primary:hover {
+    background: #0ea5e9;
+    border-color: #0ea5e9;
+}
+
+.school-suggestion__btn.ghost {
+    background: transparent;
+    color: #e5e7eb;
+}
+
+.school-suggestion__btn.ghost:hover {
+    background: rgba(148, 163, 184, 0.15);
+}
+
+/* ============= SCHOOL INFO MODAL ============= */
+.school-info-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    z-index: 1600;
+    transition: opacity 0.2s ease;
+}
+
+.school-info-modal.hide {
+    opacity: 0;
+}
+
+.school-info-card {
+    background: #ffffff;
+    color: #0f172a;
+    border-radius: 12px;
+    padding: 18px;
+    width: min(560px, 100%);
+    box-shadow: 0 16px 48px rgba(15, 23, 42, 0.15);
+    animation: fadeInScale 0.22s ease;
+}
+
+.school-info-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 12px;
+    margin-bottom: 12px;
+}
+
+.school-info-label {
+    font-size: 12px;
+    color: #475569;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.school-info-title {
+    margin-top: 6px;
+    font-size: 20px;
+    color: #0f172a;
+}
+
+.school-info-sub {
+    color: #475569;
+    margin-top: 4px;
+}
+
+.school-info-close {
+    border: none;
+    background: #e2e8f0;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    font-size: 18px;
+    cursor: pointer;
+    color: #0f172a;
+    transition: background 0.15s ease;
+}
+
+.school-info-close:hover {
+    background: #cbd5e1;
+}
+
+.school-info-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.school-info-row {
+    display: flex;
+    gap: 8px;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.school-info-row span {
+    min-width: 80px;
+    color: #475569;
+    font-weight: 600;
+}
+
+.school-info-row a {
+    color: #0ea5e9;
+    text-decoration: none;
+}
+
+.school-info-row a:hover {
+    text-decoration: underline;
+}
+
+@media (max-width: 640px) {
+    .school-suggestion {
+        right: 12px;
+        left: 12px;
+        bottom: 16px;
+    }
+
+    .school-info-modal {
+        padding: 12px;
+    }
+}

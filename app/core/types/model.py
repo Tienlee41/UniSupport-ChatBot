@@ -23,6 +23,9 @@ class GenerationParams(TypedDict):
     school_domain: NotRequired[bool]
     time_metric: NotRequired[Literal["m", "y", "d"]]
     time_range: NotRequired[int]
+    time_year: NotRequired[int]
+    time_year_start: NotRequired[int]
+    time_year_end: NotRequired[int]
     # Rerank
     llm_rerank: NotRequired[bool]
     page_score_threshold: NotRequired[float]

@@ -6,8 +6,16 @@ from ..config import ChunkRankerConfig
 
 class ChunkRanker:
     """Cross-encoder reranker for Vietnamese"""
-    def __init__(self, chunk_config: ChunkRankerConfig) -> None:
+    def __init__(self, chunk_config: ChunkRankerConfig, shared_ranker=None, shared_ranker_device=None) -> None:
         self.chunk_config = chunk_config
+        
+        # If shared reranker is provided, reuse it to save VRAM
+        if shared_ranker is not None:
+            self.ranker = shared_ranker
+            self.device = shared_ranker_device or chunk_config.device
+            print(f"[ChunkRanker] Reusing shared reranker model: {chunk_config.ranker_name} on {self.device}")
+            return
+        
         # Auto-detect device: use CPU if CUDA is out of memory, otherwise use configured device
         device = chunk_config.device
         if device == "cuda" and torch.cuda.is_available():
@@ -29,8 +37,17 @@ class ChunkRanker:
         self.device = device  # Store actual device used
         print(f"[ChunkRanker] Loaded model: {chunk_config.ranker_name} on {device}")
     
-    def rerank_chunks(self, sources: list[RagSource], query: str, relative_threshold: float = 0.5) -> list[RagSource]:
-        """Perform cross-encoder rerank (Per page)."""
+    def rerank_chunks(self, sources: list[RagSource], query: str, relative_threshold: float = 0.5, use_relative_threshold: bool = True) -> list[RagSource]:
+        """
+        Perform cross-encoder rerank (Per page).
+        
+        Args:
+            sources: List of RAG sources to rerank
+            query: Query string
+            relative_threshold: Threshold value (0.5 by default)
+            use_relative_threshold: If True, threshold = max_score * relative_threshold (relative)
+                                   If False, threshold = relative_threshold (fixed absolute)
+        """
         if not sources:
             return []
         
@@ -54,11 +71,18 @@ class ChunkRanker:
         # Combine sources with scores
         scored_sources = list(zip(sources, scores))
         
-        # Use fixed absolute threshold of 0.5 instead of relative threshold
+        # Calculate threshold based on mode
         max_score = max(scores) if scores.size > 0 else 0
-        score_threshold = 0.5  # Fixed absolute threshold
+        if use_relative_threshold:
+            # Relative threshold: threshold = max_score * relative_threshold
+            score_threshold = max_score * relative_threshold
+            threshold_type = "relative"
+        else:
+            # Fixed absolute threshold: threshold = relative_threshold
+            score_threshold = relative_threshold
+            threshold_type = "fixed"
         
-        print(f"[ChunkRanker] Max score: {max_score:.4f}, Threshold: {score_threshold:.4f} (fixed)")
+        print(f"[ChunkRanker] Max score: {max_score:.4f}, Threshold: {score_threshold:.4f} ({threshold_type})")
         
         # Log top scores
         sorted_by_score = sorted(scored_sources, key=lambda x: x[1], reverse=True)

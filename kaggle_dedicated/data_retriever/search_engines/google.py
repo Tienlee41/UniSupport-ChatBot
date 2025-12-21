@@ -21,6 +21,12 @@ class GoogleSearchEngine(AbstractSearchEngine):
             domain_queries.append(f"site:{domain}")
         engine_query = "(" + " OR ".join(domain_queries) + ") " + query
         return engine_query
+    def _apply_year_range(self, engine_query: str, year_start: int, year_end: int) -> str:
+        year_start = max(1900, year_start)
+        year_end = min(2100, year_end)
+        if year_start > year_end:
+            year_start, year_end = year_end, year_start
+        return engine_query + f" after:{year_start}-01-01 before:{year_end}-12-31"
     
     async def search(
         self, 
@@ -28,7 +34,10 @@ class GoogleSearchEngine(AbstractSearchEngine):
         domain_restrict: Optional[bool], 
         school_domains: Optional[list[str]], 
         time_metric: Optional[Literal["d", "m", "y"]], 
-        time_range: Optional[int]
+        time_range: Optional[int],
+        time_year: Optional[int] = None,
+        time_year_start: Optional[int] = None,
+        time_year_end: Optional[int] = None
     ) -> list[SearchResult]:
         """May return url of pdf files (or files in general)"""
         if school_domains:
@@ -37,10 +46,13 @@ class GoogleSearchEngine(AbstractSearchEngine):
             engine_query = self._construct_domain_restrict_query(query)
         else:
             engine_query = query
-        if time_metric and time_range:
+        date_restrict = None
+        if time_year_start and time_year_end:
+            engine_query = self._apply_year_range(engine_query, time_year_start, time_year_end)
+        elif time_year:
+            engine_query = self._apply_year_range(engine_query, time_year, time_year)
+        elif time_metric and time_range:
             date_restrict = time_metric+str(time_range)
-        else:
-            date_restrict = None
         results = await self._search(
             10,
             query,

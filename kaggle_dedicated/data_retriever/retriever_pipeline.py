@@ -52,7 +52,22 @@ class DataRetrieverPipeline:
         )
         
         # Chunk ranker + processor
-        self._chunk_ranker = ChunkRanker(chunk_ranker_config or ChunkRankerConfig())
+        # Try to reuse shared reranker from page_ranker_model to save VRAM
+        shared_ranker = None
+        shared_ranker_device = None
+        if hasattr(page_ranker_model, 'shared_reranker'):
+            try:
+                shared_ranker = page_ranker_model.shared_reranker
+                shared_ranker_device = getattr(page_ranker_model, 'shared_reranker_device', None)
+                print(f"[DataRetrieverPipeline] Using shared reranker from page_ranker_model to save VRAM")
+            except Exception as e:
+                print(f"[DataRetrieverPipeline] Failed to get shared reranker: {e}, will load separately")
+        
+        self._chunk_ranker = ChunkRanker(
+            chunk_ranker_config or ChunkRankerConfig(),
+            shared_ranker=shared_ranker,
+            shared_ranker_device=shared_ranker_device
+        )
         self._chunk_processor = ChunkProcessor(chunk_processor_config or ChunkProcessorConfig())
         
         # Snippet checker
@@ -243,7 +258,10 @@ class DataRetrieverPipeline:
         engine_type = params.get("engine_type", "brave")
         domain_restrict = params.get("domain_restrict", False)
         time_metric = params.get("time_metric")
-        time_range = params.get("time_range")         
+        time_range = params.get("time_range")
+        time_year = params.get("time_year")
+        time_year_start = params.get("time_year_start")
+        time_year_end = params.get("time_year_end")
         search_results: list[SearchResult] = []
         if engine_type == "brave":
             search_func = self._brave_search_engine.search
@@ -254,7 +272,10 @@ class DataRetrieverPipeline:
             domain_restrict=domain_restrict,
             school_domains=school_domains,
             time_metric=time_metric,
-            time_range=time_range
+            time_range=time_range,
+            time_year=time_year,
+            time_year_start=time_year_start,
+            time_year_end=time_year_end
         )
         self.logger.end("Websearch")
         # Rerank Page
@@ -406,7 +427,8 @@ class DataRetrieverPipeline:
             relavent = self._prioritize_table_chunks(rag_sources, relavent)
             relavent = self._merger.merge(rag_sources, relavent, merge_table, merge_neighbor)
             if chunk_rerank_enabled and relavent:
-                relavent = self._chunk_ranker.rerank_chunks(relavent, query, chunk_score_threshold)
+                # For web: use relative threshold (threshold = max_score * chunk_score_threshold)
+                relavent = self._chunk_ranker.rerank_chunks(relavent, query, relative_threshold=chunk_score_threshold, use_relative_threshold=True)
             return relavent
         
         # Run all in parallel using thread pool
@@ -538,7 +560,8 @@ class DataRetrieverPipeline:
             relavent_sources = self._rag.retrieve(rag_sources, query, page_k_doc)
             relavent_sources = self._merger.merge(rag_sources, relavent_sources, merge_table, merge_neighbor)
             if chunk_rerank_enabled:
-                relavent_sources = self._chunk_ranker.rerank_chunks(relavent_sources, query, chunk_score_threshold)
+                # For web: use relative threshold (threshold = max_score * chunk_score_threshold)
+                relavent_sources = self._chunk_ranker.rerank_chunks(relavent_sources, query, relative_threshold=chunk_score_threshold, use_relative_threshold=True)
             rag_sources = relavent_sources
         
         self.logger.end("RAG")

@@ -34,13 +34,28 @@ class BraveSearchEngine(AbstractSearchEngine):
             time_span = timedelta(days=time_range)
         from_day = today - time_span
         return from_day.strftime("%Y-%m-%d") + "to" + today.strftime("%Y-%m-%d")
+    def _construct_year_range(self, year: int) -> str:
+        start = datetime(year, 1, 1, tzinfo=timezone.utc)
+        end = datetime(year, 12, 31, tzinfo=timezone.utc)
+        return start.strftime("%Y-%m-%d") + "to" + end.strftime("%Y-%m-%d")
+    def _construct_year_span(self, year_start: int, year_end: int) -> str:
+        year_start = max(1900, year_start)
+        year_end = min(2100, year_end)
+        if year_start > year_end:
+            year_start, year_end = year_end, year_start
+        start = datetime(year_start, 1, 1, tzinfo=timezone.utc)
+        end = datetime(year_end, 12, 31, tzinfo=timezone.utc)
+        return start.strftime("%Y-%m-%d") + "to" + end.strftime("%Y-%m-%d")
     async def search(
         self, 
         query: str, 
         domain_restrict: Optional[bool], 
         school_domains: Optional[list[str]], 
         time_metric: Optional[Literal["d", "m", "y"]], 
-        time_range: Optional[int]
+        time_range: Optional[int],
+        time_year: Optional[int] = None,
+        time_year_start: Optional[int] = None,
+        time_year_end: Optional[int] = None
     ) -> list[SearchResult]:
         k = 10
         if school_domains:
@@ -50,15 +65,19 @@ class BraveSearchEngine(AbstractSearchEngine):
             k = 20 # Try to get more result, seem like not work anyway
         else:
             engine_query = query
-        if time_metric and time_range:
+        freshness = None
+        if time_year_start and time_year_end:
+            freshness = self._construct_year_span(time_year_start, time_year_end)
+        elif time_year:
+            freshness = self._construct_year_range(time_year)
+        elif time_metric and time_range:
             date_restrict = self._construct_freshness(time_metric, time_range)
-        else:
-            date_restrict = None
+            freshness = date_restrict
         results = await self._search(
             k,
             query,
             engine_query,
-            date_restrict
+            freshness
         )
         if school_domains:
             # Brave may ignore domain restrict when apply freshness, so we filtere in one more time
