@@ -209,10 +209,97 @@ class WebRetriever:
         )
         self.llm_keywords = llm_keywords
         self.school_mapper = SchoolMapper(f"{BASE_PATH}files/school_name.json")
+
     async def start(self):
         """Initialize websearch"""
         await self.pipeline.start()
+
+    def _tokenize(self, text: str) -> set[str]:
+        return set(re.findall(r"\w+", (text or "").lower(), flags=re.UNICODE))
+
+    def _domain_trust(self, url: str) -> float:
+        from urllib.parse import urlparse
+
+        domain = (urlparse(url).netloc or "").lower()
+        if not domain:
+            return 0.0
+        if domain.endswith(".edu.vn") or domain.endswith(".gov.vn"):
+            return 1.0
+        if ".edu" in domain or ".gov" in domain:
+            return 0.9
+        if domain.endswith(".org"):
+            return 0.75
+        if any(bad in domain for bad in ["forum", "blogspot", "wordpress"]):
+            return 0.35
+        return 0.6
+
+    def _relevance_score(self, question: str, title: str, description: str, url: str) -> float:
+        query_tokens = self._tokenize(question)
+        text_tokens = self._tokenize(f"{title} {description} {url}")
+        if not query_tokens:
+            return 0.0
+        overlap = len(query_tokens.intersection(text_tokens))
+        return overlap / max(1, len(query_tokens))
+
+    def _quality_audit(
+        self,
+        question: str,
+        web_sources: list[WebSource],
+        rag_sources: list[RagSource],
+        params: GenerationParams
+    ) -> tuple[list[WebSource], list[RagSource]]:
+        quality_log = params.get("quality_log", True)
+        min_relevance = float(params.get("quality_min_relevance", 0.25))
+        min_trust = float(params.get("quality_min_trust", 0.50))
+
+        if quality_log:
+            print("\n[QualityGate] STEP 3/3 - Validate web results")
+            print(f"[QualityGate] Thresholds -> relevance>={min_relevance:.2f}, trust>={min_trust:.2f}")
+
+        accepted_web_sources: list[WebSource] = []
+        accepted_urls: set[str] = set()
+        for idx, source in enumerate(web_sources, 1):
+            title = source.get("title", "")
+            url = source.get("url", "")
+            description = source.get("description", source.get("text", ""))
+            relevance = self._relevance_score(question, title, description, url)
+            trust = self._domain_trust(url)
+            is_ok = relevance >= min_relevance and trust >= min_trust
+
+            if quality_log:
+                status = "PASS" if is_ok else "DROP"
+                print(
+                    f"[QualityGate] [{idx:02d}] {status} | rel={relevance:.3f} trust={trust:.3f} | "
+                    f"title={title[:80]} | url={url}"
+                )
+
+            if is_ok:
+                accepted_web_sources.append(source)
+                if url:
+                    accepted_urls.add(url)
+
+        accepted_rag_sources: list[RagSource] = []
+        for source in rag_sources:
+            source_url = source.get("url", "")
+            if not accepted_urls or not source_url or source_url in accepted_urls:
+                accepted_rag_sources.append(source)
+
+        if quality_log:
+            print(
+                f"[QualityGate] Result -> web_sources={len(accepted_web_sources)}/{len(web_sources)}, "
+                f"rag_sources={len(accepted_rag_sources)}/{len(rag_sources)}"
+            )
+        return accepted_web_sources, accepted_rag_sources
+
     async def retrive(self, question: str, params: GenerationParams) -> tuple[list[WebSource], list[RagSource]]:
+        enable_quality_gate = params.get("enable_quality_gate", False)
+        quality_log = params.get("quality_log", enable_quality_gate)
+        params["quality_log"] = quality_log
+
+        if quality_log:
+            print("\n[QualityGate] STEP 1/3 - Send query to keyword extractor")
+            print(f"[QualityGate] Question: {question}")
+
         data = await self.llm_keywords.keywords(question, params)
         max_query = params.get("max_query", 1)
         queries = []
@@ -227,7 +314,24 @@ class WebRetriever:
                     print(f"[DOMAINS]", school_domains)
                     if len(school_domains) > 0:
                         queries.append([item["query"], school_domains])
-        return await self.pipeline.retrieve(params, queries[:max_query])
+        queries = queries[:max_query]
+        if quality_log:
+            print(f"[QualityGate] Extracted queries ({len(queries)}): {queries}")
+            print("[QualityGate] STEP 2/3 - Run web search")
+
+        web_sources, rag_sources = await self.pipeline.retrieve(params, queries)
+        if quality_log:
+            print(
+                f"[QualityGate] Raw retrieve -> web_sources={len(web_sources)}, "
+                f"rag_sources={len(rag_sources)}"
+            )
+
+        if not enable_quality_gate:
+            if quality_log:
+                print("[QualityGate] Disabled -> return raw web search output")
+            return web_sources, rag_sources
+
+        return self._quality_audit(question, web_sources, rag_sources, params)
     
 class RouterRetriever:
     def __init__(self, llm_router: RouterModelProtocol, web_retriever: WebRetriever, local_retriever: LocalRetriever) -> None:
@@ -637,7 +741,17 @@ async def main():
         async def pre_inference(self, request: WorkerChatRequest) -> ModelPreOutput:
             stream_id = str(uuid.uuid4())
             params = request["params"]
+            params.setdefault("enable_quality_gate", False)
+            params.setdefault("quality_log", params["enable_quality_gate"])
+            params.setdefault("quality_min_relevance", 0.25)
+            params.setdefault("quality_min_trust", 0.50)
             print(params)
+            print(
+                f"[QualityGate] enable_quality_gate={params['enable_quality_gate']} | "
+                f"quality_log={params['quality_log']} | "
+                f"min_relevance={params['quality_min_relevance']} | "
+                f"min_trust={params['quality_min_trust']}"
+            )
             prompt, pre_output = await ws_pipeline.pre_inference(
                 request["text"],
                 stream_id,

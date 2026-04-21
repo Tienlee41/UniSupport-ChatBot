@@ -1,6 +1,7 @@
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain.vectorstores import FAISS
+from langchain_community.vectorstores import FAISS
 from langchain_community.retrievers import BM25Retriever as LangChainBM25Retriever
+import torch
 from ..schema import RagSource
 from ..config import RagConfig
 from .converter import RagSourceToDocumentConverter
@@ -10,9 +11,13 @@ class FaissRetriever:
     def __init__(self, config: RagConfig) -> None:
         self.config = config
         self.converter = RagSourceToDocumentConverter()
+        device = (config.device or "cpu").lower()
+        if device.startswith("cuda") and not torch.cuda.is_available():
+            device = "cpu"
+            print("[FaissRetriever] CUDA requested but unavailable, falling back to CPU")
         self.embedding = HuggingFaceEmbeddings(
             model_name=config.embedding_name, 
-            model_kwargs={"device": config.device}
+            model_kwargs={"device": device}
         )
 
     def retrieve(self, sources: list[RagSource], query: str, k: int) -> list[RagSource]:

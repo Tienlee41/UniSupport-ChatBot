@@ -16,18 +16,21 @@ class ChunkRanker:
             print(f"[ChunkRanker] Reusing shared reranker model: {chunk_config.ranker_name} on {self.device}")
             return
         
-        # Auto-detect device: use CPU if CUDA is out of memory, otherwise use configured device
-        device = chunk_config.device
-        if device == "cuda" and torch.cuda.is_available():
-            try:
-                # Try to allocate a small tensor to check if CUDA has memory
-                test_tensor = torch.zeros(1).cuda()
-                del test_tensor
-                torch.cuda.empty_cache()
-            except RuntimeError:
-                # CUDA out of memory, fallback to CPU
+        # Resolve runtime device: if CUDA is requested but unavailable/OOM, fallback to CPU.
+        device = (chunk_config.device or "cpu").lower()
+        if device.startswith("cuda"):
+            if not torch.cuda.is_available():
                 device = "cpu"
-                print(f"[ChunkRanker] CUDA out of memory, falling back to CPU")
+                print("[ChunkRanker] CUDA requested but unavailable, falling back to CPU")
+            else:
+                try:
+                    # Try a tiny allocation to catch low-memory GPUs at startup.
+                    test_tensor = torch.zeros(1, device="cuda")
+                    del test_tensor
+                    torch.cuda.empty_cache()
+                except RuntimeError:
+                    device = "cpu"
+                    print("[ChunkRanker] CUDA out of memory, falling back to CPU")
         
         self.ranker = CrossEncoder(
             chunk_config.ranker_name, 
@@ -59,13 +62,13 @@ class ChunkRanker:
         
         # Get scores from cross-encoder
         # Clear CUDA cache before prediction to avoid OOM
-        if self.device == "cuda" and torch.cuda.is_available():
+        if self.device.startswith("cuda") and torch.cuda.is_available():
             torch.cuda.empty_cache()
         
         scores = self.ranker.predict(pairs)
         
         # Clear cache after prediction
-        if self.device == "cuda" and torch.cuda.is_available():
+        if self.device.startswith("cuda") and torch.cuda.is_available():
             torch.cuda.empty_cache()
         
         # Combine sources with scores
