@@ -47,6 +47,9 @@ class GenerationParams(TypedDict):
     # Search
     use_websearch: NotRequired[bool]
     use_localdb: NotRequired[bool]
+    # Khi True (mặc định) → multi-hop decomposer tự chọn nguồn (local_db / web / hybrid) cho mỗi sub-q.
+    # Khi False → bỏ qua quyết định của decomposer, mọi sub-q chạy theo use_websearch/use_localdb do user chọn.
+    auto_source: NotRequired[bool]
     max_query: NotRequired[int]
     query_score_threshold: NotRequired[float]
     engine_type: NotRequired[SearchEngineType] # google/brave

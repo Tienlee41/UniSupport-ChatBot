@@ -68,7 +68,11 @@ class DataRetrieverPipeline:
             shared_ranker=shared_ranker,
             shared_ranker_device=shared_ranker_device
         )
-        self._chunk_processor = ChunkProcessor(chunk_processor_config or ChunkProcessorConfig())
+        # Chia sẻ embedding đã load trong FaissRetriever để MMR/dense-dedup không nạp lại model
+        self._chunk_processor = ChunkProcessor(
+            chunk_processor_config or ChunkProcessorConfig(),
+            embedding=getattr(self._rag, "embedding", None),
+        )
         
         # Snippet checker
         self._snippet_checker: SnippetCheckerProtocol = HeuristicSnippetChecker(
@@ -77,6 +81,11 @@ class DataRetrieverPipeline:
         )
         
         self.logger = CmdLogger("Retriever")
+
+    @property
+    def chunk_ranker(self) -> "ChunkRanker":
+        """Expose cho SufficiencyGate tái sử dụng cross-encoder đã load."""
+        return self._chunk_ranker
     
     def _preview_text(self, text: str, limit: int = 200) -> str:
         text = text.replace("\n", " ").strip()
@@ -229,12 +238,15 @@ class DataRetrieverPipeline:
         
         web_sources_list = self._pages_list_reorder(web_sources_list)
         
-        # Combine queries for chunk processing
-        combined_query = " ".join(
-            item if isinstance(item, str) else item[0] 
+        # Per-sub-question pipeline: pass both combined query (fallback) và list queries gốc.
+        query_list = [
+            item if isinstance(item, str) else item[0]
             for item in queries_and_domains
+        ]
+        combined_query = " ".join(query_list)
+        rag_sources = await self._merge_rag_source(
+            rag_sources_list_list, combined_query, queries=query_list
         )
-        rag_sources = await self._merge_rag_source(rag_sources_list_list, combined_query) 
         web_sources = await self._merge_web_sources(web_sources_list)
         return web_sources, rag_sources
     def _pages_list_reorder(
@@ -443,9 +455,14 @@ class DataRetrieverPipeline:
     async def _merge_rag_source(
         self,
         rag_sources_list_list: list[list[list[RagSource]]],
-        query: str
+        query: str,
+        queries: list[str] | None = None,
     ) -> list[RagSource]:
-        """Combine all ragsource, deduplicate, rank, compress"""
+        """Combine all ragsource, deduplicate, rank, compress.
+
+        Nâng cấp v5: truyền cả `queries` (danh sách sub-query) xuống ChunkProcessor
+        để thực hiện per-sub-question budgeting + entity/time/MMR boost.
+        """
         # Step 1: Flatten and remove exact duplicates by (url, chunk_index)
         url_indexes: dict[str, set[int]] = {}
         all_chunks: list[RagSource] = []
@@ -460,16 +477,18 @@ class DataRetrieverPipeline:
                     elif chunk_index not in url_indexes[url]:
                         url_indexes[url].add(chunk_index)
                         all_chunks.append(rag_source)
-        
-        # Step 2: Apply chunk processor (dedupe, rank, compress)
-        processed = await asyncio.get_event_loop().run_in_executor(
+
+        # Step 2: Apply chunk processor (dedupe, rank, MMR, compress)
+        loop = asyncio.get_event_loop()
+        processed = await loop.run_in_executor(
             self._thread_pool,
-            self._chunk_processor.process,
-            all_chunks,
-            query
+            lambda: self._chunk_processor.process(all_chunks, query, queries=queries),
         )
-        
-        self.logger.log(f"[ChunkProcessor] {len(all_chunks)} -> {len(processed)} chunks")
+
+        self.logger.log(
+            f"[ChunkProcessor] {len(all_chunks)} -> {len(processed)} chunks "
+            f"(queries={len(queries) if queries else 1})"
+        )
         return processed
     async def _merge_web_sources(
         self,

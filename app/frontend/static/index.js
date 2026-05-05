@@ -61,6 +61,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Advanced search parameters
     const websearchCheckbox = document.getElementById('websearch-checkbox');
     const localdbCheckbox = document.getElementById('localdb-checkbox');
+    const autoSourceCheckbox = document.getElementById('auto-source-checkbox');
     const maxQueryInput = document.getElementById('max-query');
     const queryScoreThreshold = document.getElementById('query-score-threshold');
     const queryScoreValue = document.getElementById('query-score-value');
@@ -675,6 +676,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const simpleRetrieveModeValue = simpleRetrieveMode.value;
         let usewebsearch = websearchCheckbox.checked;
         let uselocaldb = localdbCheckbox.checked;
+        const autoSource = autoSourceCheckbox ? autoSourceCheckbox.checked : true;
 
         // Validate k_docs value before sending
         let kDocsValue = parseInt(searchDocsCount.value);
@@ -775,6 +777,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // Advanced search parameters
             use_websearch: usewebsearch,
             use_localdb: uselocaldb,
+            auto_source: autoSource,
             max_query: maxQuery,
             query_score_threshold: queryScore,
             engine_type: engineType,

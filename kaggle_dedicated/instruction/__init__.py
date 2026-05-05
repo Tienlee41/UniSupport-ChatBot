@@ -3,6 +3,7 @@ from .page_rerank import *
 from .reader import *
 from .template import *
 from .router import *
+from .decomposer import *
 
 import re
 JSON_PATTERN = re.compile(r"```json\s*(.*?)```", re.DOTALL)

@@ -8,10 +8,24 @@ BASE_PATH = "" if IS_LOCAL else "/kaggle/working"
 ws_pipeline = None
 
 import os
+import platform
 import requests
 import io
 import tarfile
 import shutil
+
+
+def _patch_platform_for_windows() -> None:
+    """Avoid Windows WMI hangs in platform helpers."""
+    if os.name != "nt":
+        return
+    arch = os.getenv("PROCESSOR_ARCHITECTURE", "").strip() or "AMD64"
+    platform.machine = lambda: arch  # type: ignore[assignment]
+    platform.system = lambda: "Windows"  # type: ignore[assignment]
+
+
+_patch_platform_for_windows()
+
 def unpack_folder(data: bytes, path: str):
     if os.path.exists(path): # Remove old code
         shutil.rmtree(path)
@@ -52,7 +66,9 @@ if DOMAIN != "http://127.0.0.1:8000":
 # Replacement for cmd
     
 from huggingface_hub import login
+print("[Startup] Logging in Hugging Face...", flush=True)
 login(token=os.getenv("HUGGING_FACE_TOKEN"))
+print("[Startup] Hugging Face login completed.", flush=True)
 
 # cmd = [
 #     "hf", "auth", "login",
@@ -62,8 +78,10 @@ login(token=os.getenv("HUGGING_FACE_TOKEN"))
 # subprocess.run(cmd)
 # print("")
 
+print("[Startup] Importing retrieval and server modules...", flush=True)
 from data_retriever import *
 from server import *
+print("[Startup] Core modules imported.", flush=True)
 from school_mapper import SchoolMapper
 from typing import AsyncGenerator, NotRequired, Protocol
 from typing import Callable, AsyncGenerator
@@ -130,6 +148,26 @@ ROUTER_PARAMS = {
     "temperature": 0.7,
     "top_p": 0.9,
     "max_tokens": 1024
+}
+DECOMPOSER_PARAMS = {
+    "temperature": 0.3,  # low temp → output JSON ổn định
+    "top_p": 0.9,
+    "max_tokens": 1024
+}
+FACT_EXTRACTOR_PARAMS = {
+    "temperature": 0.2,
+    "top_p": 0.9,
+    "max_tokens": 256
+}
+LIST_FACT_EXTRACTOR_PARAMS = {
+    "temperature": 0.1,
+    "top_p": 0.9,
+    "max_tokens": 1024,  # cao hơn vì cần liệt kê đầy đủ entries
+}
+REASONER_PARAMS = {
+    "temperature": 0.1,
+    "top_p": 0.9,
+    "max_tokens": 1024,  # đủ cho 1 câu trả lời tổng hợp + danh sách
 }
 MODELS: list[ModelInfo] = [
     {
@@ -450,6 +488,144 @@ class APIModelCore:
         return self.call(call_type, instruction, prompt, params)
     
 class APIModel(APIModelCore):
+    async def decompose(self, question: str, params: GenerationParams):
+        """Phân rã câu hỏi thành DecomposerPlan (multi-hop bước đầu).
+
+        Trả về `DecomposerPlan | None`. None khi parse fail → caller sẽ fallback single-hop.
+        """
+        from data_retriever import parse_plan_json
+        copy_params = copy.deepcopy(params)
+        copy_params.update(DECOMPOSER_PARAMS)  # type: ignore
+        prompt = DECOMPOSER_TEMPLATE.format(question=question)
+        text = ""
+        try:
+            async for chunk in await self(
+                call_type="decomposer",  # CallType enum chỉ có 4 giá trị sẵn; dùng string cho feature mới
+                instruction=DECOMPOSER_INSTRUCTION + "\n\n" + DECOMPOSER_PREFIX,
+                prompt=prompt,
+                params=copy_params,
+            ):
+                text += chunk
+        except Exception:
+            traceback.print_exc()
+            return None
+        self.logger.log(f"[Decomposer raw] {text[:400]}...")
+        plan = parse_plan_json(text, max_sub=5)
+        if plan is None:
+            self.logger.log("[Decomposer] parse failed → single-hop")
+        return plan
+
+    async def extract_fact(
+        self,
+        sub_q_text: str,
+        rag_sources: list,
+        params: GenerationParams,
+        evidence_type: str = "factual",
+    ) -> tuple[str, float]:
+        """Trích fact từ top chunks cho bridge-entity hop tiếp theo.
+
+        Chế độ chọn theo `evidence_type`:
+        - factual            → 1 câu ≤25 từ (FACT_EXTRACTOR_*)
+        - numeric/list/comparison/computation → liệt kê entries (LIST_FACT_EXTRACTOR_*)
+        """
+        if not rag_sources:
+            return "", 0.0
+        # Chọn prompt + params theo evidence_type
+        try:
+            instr, template = select_fact_extractor_prompt(evidence_type)
+        except NameError:
+            # Fallback nếu instruction module chưa có helper.
+            instr, template = FACT_EXTRACTOR_INSTRUCTION, FACT_EXTRACTOR_TEMPLATE
+        is_list_mode = (evidence_type or "factual").lower() in {
+            "list", "numeric", "comparison", "computation"
+        }
+        # List mode: lấy nhiều chunks hơn + cắt dài hơn để model thấy đủ data.
+        if is_list_mode:
+            top = rag_sources[:8]
+            chunk_max_chars = 1200
+            run_params = LIST_FACT_EXTRACTOR_PARAMS
+        else:
+            top = rag_sources[:5]
+            chunk_max_chars = 500
+            run_params = FACT_EXTRACTOR_PARAMS
+        context = "\n\n".join(
+            f"- {c.get('text', '')[:chunk_max_chars]}" for c in top
+        )
+        prompt = template.format(question=sub_q_text, context=context)
+        copy_params = copy.deepcopy(params)
+        copy_params.update(run_params)  # type: ignore
+        text = ""
+        try:
+            async for chunk in await self(
+                call_type="fact_extractor",
+                instruction=instr,
+                prompt=prompt,
+                params=copy_params,
+            ):
+                text += chunk
+        except Exception:
+            traceback.print_exc()
+            return "", 0.0
+        try:
+            result = json.loads(extract_json(text))
+            answer = str(result.get("answer", "")).strip()
+            conf = float(result.get("confidence", 0.0))
+            return answer, conf
+        except Exception:
+            return "", 0.0
+
+    async def reason(
+        self,
+        original_question: str,
+        sub_q_text: str,
+        evidence_blocks: list,
+        params: GenerationParams,
+    ) -> tuple[str, float]:
+        """Reasoning step: LLM tính toán/lọc/so sánh trên evidence từ deps.
+
+        Trả `(answer_text, confidence)`. answer_text có thể là chuỗi nhiều dòng
+        (mỗi dòng 1 entry) — Reader/hop sau sẽ hiểu được.
+        """
+        if not evidence_blocks:
+            return "", 0.0
+        try:
+            instr = REASONER_INSTRUCTION
+            template = REASONER_TEMPLATE
+        except NameError:
+            return "", 0.0
+        # Concat tất cả evidence blocks; mỗi block đã được multi_hop cắt độ dài.
+        joined = "\n\n".join(evidence_blocks)
+        prompt = template.format(
+            original_question=original_question,
+            sub_question=sub_q_text,
+            evidence=joined,
+        )
+        copy_params = copy.deepcopy(params)
+        copy_params.update(REASONER_PARAMS)  # type: ignore
+        text = ""
+        try:
+            async for chunk in await self(
+                call_type="reasoner",
+                instruction=instr,
+                prompt=prompt,
+                params=copy_params,
+            ):
+                text += chunk
+        except Exception:
+            traceback.print_exc()
+            return "", 0.0
+        try:
+            result = json.loads(extract_json(text))
+            answer = str(result.get("answer", "")).strip()
+            conf = float(result.get("confidence", 0.0))
+            return answer, conf
+        except Exception:
+            # Một số trường hợp LLM không trả JSON: dùng raw text như answer.
+            stripped = (text or "").strip()
+            if stripped:
+                return stripped[:1500], 0.5
+            return "", 0.0
+
     async def route(self, question: str, params: GenerationParams) -> list[dict]:
         text = ""
         prompt = ROUTER_TEMPLATE.format(question=question)
@@ -659,6 +835,40 @@ class APIModel(APIModelCore):
         
 class CombinedProtocol(ModelProtocol, KeywordModelProtocol, PageRerankModelProtocol, RouterModelProtocol):
     pass
+
+
+class _DecomposerAdapter:
+    """Adapter để MultiHopOrchestrator gọi được `APIModel.decompose` theo protocol."""
+    def __init__(self, api_model):
+        self._m = api_model
+
+    async def decompose(self, question: str, params):
+        from data_retriever import DecomposerPlan
+        plan = await self._m.decompose(question, params)
+        return plan  # DecomposerPlan | None — Orchestrator tự xử lý None
+
+
+class _FactExtractorAdapter:
+    def __init__(self, api_model):
+        self._m = api_model
+
+    async def extract(self, sub_q_text, rag_sources, params, evidence_type: str = "factual"):
+        return await self._m.extract_fact(
+            sub_q_text, rag_sources, params, evidence_type=evidence_type
+        )
+
+
+class _ReasonerAdapter:
+    """Adapter cho ReasonerProtocol — gọi APIModel.reason()."""
+    def __init__(self, api_model):
+        self._m = api_model
+
+    async def reason(self, original_question, sub_q_text, evidence_blocks, params):
+        return await self._m.reason(
+            original_question, sub_q_text, evidence_blocks, params
+        )
+
+
 class CustomQA:
     def __init__(self, model_protocol: CombinedProtocol) -> None:
         self.logger = CmdLogger("QA")
@@ -670,6 +880,20 @@ class CustomQA:
             local_retriever
         )
         self.llm_call = model_protocol
+        # Sufficiency Gate: reuse cross-encoder đã load trong web pipeline để tiết kiệm VRAM
+        self.sufficiency = SufficiencyGate(
+            chunk_ranker=web_retriever.pipeline.chunk_ranker,
+            config=SufficiencyConfig(),
+        )
+        # Multi-Hop Orchestrator (bước đầu xử lý câu hỏi phức tạp).
+        # Opt-in: mặc định disabled; bật qua params["use_multi_hop"]=True.
+        self.multi_hop = MultiHopOrchestrator(
+            base_retriever=self.retriever,
+            decomposer=_DecomposerAdapter(model_protocol),
+            fact_extractor=_FactExtractorAdapter(model_protocol),
+            reasoner=_ReasonerAdapter(model_protocol),
+            config=MultiHopConfig(enabled=True, max_hops=3, max_sub_questions=5),
+        )
     async def start(self):
         await self.retriever.web_retriever.start()
     async def inference(self, prompt: str, request: WorkerChatRequest) -> AsyncGenerator[str, None]:
@@ -688,10 +912,19 @@ class CustomQA:
         stream_id: str,
         params: GenerationParams
     ) -> tuple[str, ModelPreOutput]:
-        web_sources, rag_sources = await self.retriever.retrieve(
-            question, 
-            params
+        # Multi-hop (opt-in). Khi tắt hoặc decomposer fail → Orchestrator tự fallback single-hop.
+        web_sources, rag_sources, multi_hop_trace = await self.multi_hop.retrieve(
+            question, params
         )
+        if multi_hop_trace is not None:
+            print(
+                f"[MultiHop] hops={multi_hop_trace.hop_count} "
+                f"sub_q={len(multi_hop_trace.plan.sub_questions)}"
+            )
+            for sq in multi_hop_trace.plan.sub_questions:
+                r = multi_hop_trace.per_sub_q.get(sq.id)
+                fact_preview = (r.fact[:80] + "...") if (r and r.fact) else "(no fact)"
+                print(f"  SQ#{sq.id} [{sq.resolver}] → {fact_preview}")
         print("\n" + "=" * 80)
         print(f"[RAG CHUNKS] Total {len(rag_sources)} chunks selected for reader:")
         for idx, chunk in enumerate(rag_sources, 1):
@@ -706,8 +939,27 @@ class CustomQA:
             print("[RAG CHUNKS] No chunks selected.")
         print("=" * 80)
 
+        # Sufficiency Gate: đánh dấu low_confidence khi bằng chứng chưa đủ.
+        try:
+            suff = self.sufficiency.check(question, rag_sources)
+            params["sufficiency_score"] = suff.score
+            params["low_confidence"] = not suff.sufficient
+            print(
+                f"[SufficiencyGate] score={suff.score:.4f} sufficient={suff.sufficient} "
+                f"used={suff.used_chunks} reason={suff.reason}"
+            )
+        except Exception as e:
+            print(f"[SufficiencyGate] skipped due to error: {e}")
+            params["low_confidence"] = False
+
         context = SourceFormat()(rag_sources)
         prompt = READER_TEMPLATE.format(context=context, question=question)
+        if params.get("low_confidence"):
+            prompt = (
+                "LƯU Ý: bằng chứng truy xuất được có thể chưa đầy đủ. "
+                "Nếu không đủ cơ sở hãy TRẢ LỜI RÕ 'Tôi chưa tìm thấy thông tin...' "
+                "thay vì suy đoán.\n\n" + prompt
+            )
         print("\n" + "=" * 80)
         print("[RAG CONTEXT] Formatted chunks sent to reader:")
         print("-" * 80)
@@ -730,9 +982,12 @@ class CustomQA:
     
 async def main():
     global ws_pipeline
+    print("[Startup] Initializing API model...", flush=True)
     api_model = APIModel()
 
+    print("[Startup] Building QA pipeline...", flush=True)
     ws_pipeline = CustomQA(api_model)
+    print("[Startup] Starting retriever resources...", flush=True)
     await ws_pipeline.start()
     import uuid
     class ServerModelImplement(ServerModel):  

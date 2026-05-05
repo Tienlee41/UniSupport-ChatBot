@@ -1,0 +1,1979 @@
+Domain: https://b5d0-8-229-85-128.ngrok-free.app
+{'model_id': 'Qwen/Qwen3-4B$$$1', 'use_websearch': True, 'use_localdb': False, 'auto_source': False, 'max_query': 3, 'query_score_threshold': 0.5, 'engine_type': 'google', 'domain_restrict': False, 'school_domain': False, 'llm_rerank': False, 'page_score_threshold': 0.5, 'chunk_score_threshold': 0.5, 'k_docs': 5, 'k_pages': 3, 'page_rerank': False, 'chunk_rerank': True, 'include_pdf': False, 'include_image': False, 'merge_table': False, 'merge_neighbor': False, 'max_tokens': 2048, 'temperature': 0.5, 'top_p': 0.9, 'top_k': 40, 'max_history': 8, 'enable_quality_gate': True, 'quality_log': True, 'quality_min_score': 0.58, 'quality_min_relevance': 0.25, 'quality_min_trust': 0.5, 'quality_strict_mode': True, 'quality_max_docs': 3}
+[DocumentQualityGate] enable_quality_gate=True | quality_log=True | min_score=0.58 | min_relevance=0.25 | min_trust=0.5 | strict_mode=True | quality_max_docs=3
+
+════════════════════════════════════════════════════════════════════════════════
+║ [MULTI-HOP] PIPELINE START
+║ Question: Danh sách các trường đào ngành CNTT với điểm chuẩn dưới 28 điểm và học phí dưới 50 triệu/năm
+║ Config: max_hops=3, max_sub_q=5, subq_max_query=1, fact_extract=True
+════════════════════════════════════════════════════════════════════════════════
+[Step 1/4] DECOMPOSE → LLM phân rã câu hỏi thành DAG sub-questions
+[VLLM] decomposer | Instruction length: 4141 | Prompt length: 101 | kwargs: None
+INFO 05-05 05:59:07 [chat_utils.py:473] Detected the chat template content format to be 'string'. You can set `--chat-template-content-format` to override this.
+INFO 05-05 05:59:07 [async_llm_engine.py:209] Added request 6bdc195c387b419c894db4876f4c1a80.
+INFO 05-05 05:59:08 [metrics.py:386] Avg prompt throughput: 14.1 tokens/s, Avg generation throughput: 0.0 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 3.4%, CPU KV cache usage: 0.0%.
+INFO 05-05 05:59:13 [metrics.py:386] Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 41.5 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 3.8%, CPU KV cache usage: 0.0%.
+INFO 05-05 05:59:15 [async_llm_engine.py:177] Finished request 6bdc195c387b419c894db4876f4c1a80.
+[Decomposer raw] ```json
+{
+  "sub_questions": [
+    {"id": 1, "text": "danh sách các trường đào tạo ngành CNTT năm 2024", "depends_on": [], "resolver": "web", "evidence_type": "list"},
+    {"id": 2, "text": "điểm chuẩn ngành CNTT của các trường năm 2024", "depends_on": [1], "resolver": "local_db", "evidence_type": "numeric"},
+    {"id": 3, "text": "học phí ngành CNTT của các trường năm 2024", "depends_on": [1], "r...
+[MultiHop] [Decompose] 5 sub-questions
+[MultiHop]   SQ#1 [web/list] deps=[] | danh sách các trường đào tạo ngành CNTT năm 2024
+[MultiHop]   SQ#2 [local_db/numeric] deps=[1] | điểm chuẩn ngành CNTT của các trường năm 2024
+[MultiHop]   SQ#3 [local_db/numeric] deps=[1] | học phí ngành CNTT của các trường năm 2024
+[MultiHop]   SQ#4 [reasoning/computation] deps=[2] | lọc các trường có điểm chuẩn ≤ 28 điểm
+[MultiHop]   SQ#5 [reasoning/computation] deps=[3] | lọc các trường có học phí ≤ 50 triệu/năm
+[MultiHop] [Hop 1] running 1 sub-q in parallel
+  ▶ SQ#1 START [web/list] deps=—
+      Q-raw: danh sách các trường đào tạo ngành CNTT năm 2024
+[MultiHop]   SQ#1 auto_source=OFF → forced localdb=False websearch=True (resolver=web bị bỏ qua)
+[VLLM] CallType.KEYWORDS | Instruction length: 338 | Prompt length: 85 | kwargs: None
+INFO 05-05 05:59:15 [async_llm_engine.py:209] Added request 75b327b064a7480aa3d522698e2e802f.
+INFO 05-05 05:59:16 [async_llm_engine.py:177] Finished request 75b327b064a7480aa3d522698e2e802f.
+[RouterRetriever][TIME LLM] year_start=2024 year_end=2024 metric=y
+
+[DocumentQualityGate] STEP 1/3 - Send query to keyword extractor
+[DocumentQualityGate] Question: danh sách các trường đào tạo ngành CNTT năm 2024
+[VLLM] CallType.KEYWORDS | Instruction length: 168 | Prompt length: 8656 | kwargs: None
+INFO 05-05 05:59:16 [async_llm_engine.py:209] Added request 538de0a782e04367a275651a9b47268f.
+INFO 05-05 05:59:18 [metrics.py:386] Avg prompt throughput: 621.7 tokens/s, Avg generation throughput: 33.5 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 6.8%, CPU KV cache usage: 0.0%.
+INFO 05-05 05:59:19 [async_llm_engine.py:177] Finished request 538de0a782e04367a275651a9b47268f.
+[Model] [
+  {
+    "query": "danh sách các trường đào tạo ngành công nghệ thông tin 2024",
+    "priority": 1.0,
+    "info": "danh sách trường đào tạo ngành công nghệ thông tin năm 2024",
+    "school": ""
+  }
+]
+[Model] {'query': 'danh sách các trường đào tạo ngành công nghệ thông tin 2024', 'priority': 1.0, 'info': 'danh sách trường đào tạo ngành công nghệ thông tin năm 2024', 'school': ''}
+[DocumentQualityGate] Extracted queries (1): ['danh sách các trường đào tạo ngành công nghệ thông tin 2024']
+[DocumentQualityGate] STEP 2/3 - Run web search
+[Retriever] Manual llm_rerank=OFF (query_count=1)
+[Retriever] Manual chunk_rerank=ON (query_count=1)
+[Retriever] Websearch: 0.53909s
+[Retriever] Rerank: Skip (llm_rerank=False)
+[Retriever] Snippet Check: 0.00027s
+[Retriever] [Download] Crawling 3 URLs (from 10 candidates)...
+[Page download] Chi tao 3 jobs (k_pages=3, total_urls=10)
+[Page download] Attempt to download 3 pages from 3 urls (PARALLEL, tối đa 3 request cùng lúc)
+[Page download] ✓ Thành công (không premium): https://daa.uit.edu.vn/thong-bao-danh-sach-sinh-vien-du-kien...
+[Page download] ✓ Thành công (không premium): https://daotao.ute.udn.vn/curriculums.asp...
+[Page download] Task 0 error: 
+[Page download] Tổng requests đã gửi: 3 (bao gồm cả cancelled)
+[Page download] Success: 2/3 pages
+[Page download] Credits: 3 (regular: 3, premium: 0x10)
+[Retriever] [Download] Snippet: 0, Crawled: 2 in 15.92s
+[Retriever] Process: 0.05848s
+Split Thông báo Danh sách sinh viên dự kiến TN đợt 4 năm 2024 - UIT: 454 chars -> 1 chunks
+[ChunkRanker] Query: danh sách các trường đào tạo ngành công nghệ thông tin 2024...
+[ChunkRanker] Input chunks: 1
+[ChunkRanker] Max score: 0.0484, Threshold: 0.0242 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.0484 (KEEP) | T5, 07/11/2024 - 08:35 Chào các bạn sinh viên! Phòng Đào tạo...
+[ChunkRanker] Output chunks: 1 (filtered 0)
+Split Chương trình Đào tạo - Trường Đại học Sư phạm Kỹ thuật: 14402 chars -> 19 chunks
+[Retriever] [Prioritize] Added 3 table chunks before retrieval output
+[ChunkRanker] Query: danh sách các trường đào tạo ngành công nghệ thông tin 2024...
+[ChunkRanker] Input chunks: 6
+[ChunkRanker] Max score: 0.4080, Threshold: 0.2040 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.4080 (KEEP) | thuật Điện - Điện tử (Cử nhân) Chuyên ngành Kỹ thuật Điện tử...
+  [2] 0.2924 (KEEP) | thuật Môi trường (Cử nhân) Ngành Công nghệ Kỹ thuật Môi trườ...
+  [3] 0.1463 (DROP) | nghệ Kỹ thuật Cơ khí Chế tạo Ngành Công nghệ Kỹ thuật Ô tô N...
+  [4] 0.0269 (DROP) | ### Tân Sinh viên 2024  - Danh sách lớp sinh hoạt...
+  [5] 0.0092 (DROP) | | Tham gia khảo sát CTĐT dành cho giảng viên và nhà tuyển dụ...
+[ChunkRanker] Output chunks: 2 (filtered 4)
+[Retriever] RAG: 1.06805s
+[Retriever] [ChunkProcessor] 3 -> 1 chunks (queries=1)
+[DocumentQualityGate] Raw retrieve -> web_sources=2, rag_sources=1
+
+[DocumentQualityGate] STEP 3/3 - Validate and score web documents
+[DocumentQualityGate] Thresholds -> final_score>=0.58, relevance>=0.25, trust>=0.50, strict_mode=True
+[DocumentQualityGate] [01] PASS | final=0.720 (rel=0.600, trust=0.600, fresh=1.000, rich=1.000, spam=0.000) | title=Chương trình Đào tạo - Trường Đại học Sư phạm Kỹ thuật | url=https://daotao.ute.udn.vn/curriculums.asp
+[DocumentQualityGate] [02] PASS | final=0.865 (rel=0.700, trust=1.000, fresh=1.000, rich=1.000, spam=0.000) | title=Thông báo Danh sách sinh viên dự kiến TN đợt 4 năm 2024 - UIT | url=https://daa.uit.edu.vn/thong-bao-danh-sach-sinh-vien-du-kien-tn-dot-4-nam-2024
+[DocumentQualityGate] Result -> web_sources=2/2, rag_sources=1/1, max_docs_after_gate=3
+[VLLM] fact_extractor | Instruction length: 306 | Prompt length: 1932 | kwargs: None
+INFO 05-05 05:59:36 [async_llm_engine.py:209] Added request 5ebcd04cb15a4191b3540268db7b84f7.
+INFO 05-05 05:59:37 [metrics.py:386] Avg prompt throughput: 39.9 tokens/s, Avg generation throughput: 1.7 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 1.7%, CPU KV cache usage: 0.0%.
+INFO 05-05 05:59:39 [async_llm_engine.py:177] Finished request 5ebcd04cb15a4191b3540268db7b84f7.
+  ✓ SQ#1 DONE  web=2 rag=1 conf=0.95
+      Fact[1]: Ngành Công nghệ Thông tin (Cử nhân); Ngành Công nghệ Thông tin (Kỹ sư)
+[MultiHop] [Hop 2] running 2 sub-q in parallel
+  ▶ SQ#2 START [local_db/numeric] deps=#1
+      Q-raw: điểm chuẩn ngành CNTT của các trường năm 2024
+[MultiHop]   SQ#2 auto_source=OFF → forced localdb=False websearch=True (resolver=local_db bị bỏ qua)
+[VLLM] CallType.KEYWORDS | Instruction length: 338 | Prompt length: 82 | kwargs: None
+INFO 05-05 05:59:39 [async_llm_engine.py:209] Added request aa9e51dfa8d34310b7e3e98eb0f55466.
+  ▶ SQ#3 START [local_db/numeric] deps=#1
+      Q-raw: học phí ngành CNTT của các trường năm 2024
+[MultiHop]   SQ#3 auto_source=OFF → forced localdb=False websearch=True (resolver=local_db bị bỏ qua)
+[VLLM] CallType.KEYWORDS | Instruction length: 338 | Prompt length: 79 | kwargs: None
+INFO 05-05 05:59:39 [async_llm_engine.py:209] Added request 12d32756eef8440ca13ca81383d1d272.
+INFO 05-05 05:59:40 [async_llm_engine.py:177] Finished request aa9e51dfa8d34310b7e3e98eb0f55466.
+INFO 05-05 05:59:40 [async_llm_engine.py:177] Finished request 12d32756eef8440ca13ca81383d1d272.
+[RouterRetriever][TIME LLM] year_start=2024 year_end=2024 metric=y
+
+[DocumentQualityGate] STEP 1/3 - Send query to keyword extractor
+[DocumentQualityGate] Question: điểm chuẩn ngành CNTT của các trường năm 2024
+[VLLM] CallType.KEYWORDS | Instruction length: 168 | Prompt length: 8653 | kwargs: None
+INFO 05-05 05:59:40 [async_llm_engine.py:209] Added request 007b6d70011e4a16bf3e9c4363638b3c.
+[RouterRetriever][TIME LLM] year_start=2024 year_end=2024 metric=y
+
+[DocumentQualityGate] STEP 1/3 - Send query to keyword extractor
+[DocumentQualityGate] Question: học phí ngành CNTT của các trường năm 2024
+[VLLM] CallType.KEYWORDS | Instruction length: 168 | Prompt length: 8650 | kwargs: None
+INFO 05-05 05:59:40 [async_llm_engine.py:209] Added request ae4225e9d1fe4444b9d51720cafa934b.
+INFO 05-05 05:59:42 [metrics.py:386] Avg prompt throughput: 1240.2 tokens/s, Avg generation throughput: 32.4 tokens/s, Running: 2 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 13.4%, CPU KV cache usage: 0.0%.
+INFO 05-05 05:59:43 [async_llm_engine.py:177] Finished request ae4225e9d1fe4444b9d51720cafa934b.
+[Model] [
+  {
+    "query": "học phí ngành công nghệ thông tin các trường năm 2024",
+    "priority": 1.0,
+    "info": "học phí ngành công nghệ thông tin năm 2024",
+    "school": ""
+  }
+]
+[Model] {'query': 'học phí ngành công nghệ thông tin các trường năm 2024', 'priority': 1.0, 'info': 'học phí ngành công nghệ thông tin năm 2024', 'school': ''}
+[DocumentQualityGate] Extracted queries (1): ['học phí ngành công nghệ thông tin các trường năm 2024']
+[DocumentQualityGate] STEP 2/3 - Run web search
+[Retriever] Manual llm_rerank=OFF (query_count=1)
+[Retriever] Manual chunk_rerank=ON (query_count=1)
+INFO 05-05 05:59:43 [async_llm_engine.py:177] Finished request 007b6d70011e4a16bf3e9c4363638b3c.
+[Model] [
+  {
+    "query": "điểm chuẩn ngành công nghệ thông tin các trường năm 2024",
+    "priority": 1.0,
+    "info": "điểm chuẩn ngành công nghệ thông tin của các trường năm 2024",
+    "school": ""
+  }
+]
+[Model] {'query': 'điểm chuẩn ngành công nghệ thông tin các trường năm 2024', 'priority': 1.0, 'info': 'điểm chuẩn ngành công nghệ thông tin của các trường năm 2024', 'school': ''}
+[DocumentQualityGate] Extracted queries (1): ['điểm chuẩn ngành công nghệ thông tin các trường năm 2024']
+[DocumentQualityGate] STEP 2/3 - Run web search
+[Retriever] Manual llm_rerank=OFF (query_count=1)
+[Retriever] Manual chunk_rerank=ON (query_count=1)
+[Retriever] Websearch: 0.37918s
+[Retriever] Rerank: Skip (llm_rerank=False)
+[Retriever] Snippet Check: 0.00025s
+[Retriever] [Download] Crawling 3 URLs (from 10 candidates)...
+[Page download] Chi tao 3 jobs (k_pages=3, total_urls=10)
+[Page download] Attempt to download 3 pages from 3 urls (PARALLEL, tối đa 3 request cùng lúc)
+[Retriever] Websearch: 0.10726s
+[Retriever] Rerank: Skip (llm_rerank=False)
+[Retriever] Snippet Check: 0.00024s
+[Retriever] [Download] Crawling 3 URLs (from 10 candidates)...
+[Page download] Chi tao 3 jobs (k_pages=3, total_urls=10)
+[Page download] Attempt to download 3 pages from 3 urls (PARALLEL, tối đa 3 request cùng lúc)
+[Page download] ✓ Thành công (không premium): https://thuvienphapluat.vn/hoi-dap-phap-luat/hoc-phi-nganh-c...
+[Page download] ✓ Thành công (không premium): https://laodong.vn/giao-duc/diem-chuan-2024-nganh-cong-nghe-...
+[Page download] ✓ Thành công (không premium): https://laodong.vn/giao-duc/hoc-phi-nganh-cong-nghe-thong-ti...
+[Page download] Error 500 via ScrapingBee: https://daibieunhandan.vn/diem-chuan-nganh-cong-nghe-thong-t... (không retry)
+[Page download] ✓ Thành công (premium): https://daibieunhandan.vn/diem-chuan-nganh-cong-nghe-thong-t...
+[Page download] Error 500 via ScrapingBee: https://thitruongtaichinhtiente.vn/hoc-phi-nganh-cong-nghe-t... (không retry)
+[Page download] ✓ Thành công (premium): https://thitruongtaichinhtiente.vn/hoc-phi-nganh-cong-nghe-t...
+[Page download] Tổng requests đã gửi: 8 (bao gồm cả cancelled)
+[Page download] Success: 3/3 pages
+[Page download] Credits: 26 (regular: 6, premium: 2x10)
+[Retriever] [Download] Snippet: 0, Crawled: 3 in 8.41s
+[Retriever] Process: 0.05125s
+Split Học phí ngành Công nghệ Thông tin các trường Đại học năm 2024: 6214 chars -> 5 chunks
+Split Học phí ngành Công nghệ thông tin tại các trường đại học năm ...: 9434 chars -> 11 chunks
+[ChunkRanker] Query: học phí ngành công nghệ thông tin các trường năm 2024...
+[ChunkRanker] Input chunks: 3
+[ChunkRanker] Query: học phí ngành công nghệ thông tin các trường năm 2024...
+[ChunkRanker] Input chunks: 3
+[ChunkRanker] Max score: 0.9989, Threshold: 0.4995 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.9989 (KEEP) | Thành Nguyễn 23/07/2024 - 14:10 Công nghệ Thông tin là một t...
+  [2] 0.9975 (KEEP) | ### Học phí ngành Công nghệ Thông tin các trường Đại học năm...
+  [3] 0.9869 (KEEP) | Với mức học phí ngành Công nghệ thông tin nói trên, nhiều tr...
+[ChunkRanker] Output chunks: 3 (filtered 0)
+[ChunkRanker] Max score: 0.9993, Threshold: 0.4996 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.9993 (KEEP) | Nhiều trường đại học đã công bố học phí ngành Công nghệ thôn...
+  [2] 0.9970 (KEEP) | ### Học phí ngành Công nghệ thông tin tại các trường đại học...
+  [3] 0.9181 (KEEP) | Xin hỏi học phí ngành Công nghệ thông tin tại các trường đại...
+[ChunkRanker] Output chunks: 3 (filtered 0)
+[Retriever] RAG: 0.74549s
+[Retriever] [ChunkProcessor] 6 -> 1 chunks (queries=1)
+[DocumentQualityGate] Raw retrieve -> web_sources=2, rag_sources=1
+
+[DocumentQualityGate] STEP 3/3 - Validate and score web documents
+[DocumentQualityGate] Thresholds -> final_score>=0.58, relevance>=0.25, trust>=0.50, strict_mode=True
+[DocumentQualityGate] [01] PASS | final=0.800 (rel=0.778, trust=0.600, fresh=1.000, rich=1.000, spam=0.000) | title=Học phí ngành Công nghệ Thông tin các trường Đại học năm 2024 | url=https://thitruongtaichinhtiente.vn/hoc-phi-nganh-cong-nghe-thong-tin-cac-truong-dai-hoc-nam-2024-60328.html
+[DocumentQualityGate] [02] PASS | final=0.800 (rel=0.778, trust=0.600, fresh=1.000, rich=1.000, spam=0.000) | title=Học phí ngành Công nghệ thông tin tại các trường đại học năm ... | url=https://thuvienphapluat.vn/hoi-dap-phap-luat/hoc-phi-nganh-cong-nghe-thong-tin-tai-cac-truong-dai-hoc-nam-20242025-la-bao-nhieu-138023842.html
+[DocumentQualityGate] Result -> web_sources=2/2, rag_sources=1/1, max_docs_after_gate=3
+[VLLM] fact_extractor | Instruction length: 306 | Prompt length: 791 | kwargs: None
+INFO 05-05 05:59:53 [async_llm_engine.py:209] Added request 59ac28d06c634005a67c3fd86c41cf9f.
+INFO 05-05 05:59:53 [metrics.py:386] Avg prompt throughput: 33.4 tokens/s, Avg generation throughput: 10.7 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 0.9%, CPU KV cache usage: 0.0%.
+[Page download] ✓ Thành công (không premium): https://xaydungchinhsach.chinhphu.vn/diem-chuan-truong-dai-h...
+[Page download] Tổng requests đã gửi: 5 (bao gồm cả cancelled)
+[Page download] Success: 3/3 pages
+[Page download] Credits: 23 (regular: 3, premium: 2x10)
+[Retriever] [Download] Snippet: 0, Crawled: 3 in 11.13s
+[Retriever] Process: 0.04922s
+Split Điểm chuẩn ngành Công nghệ thông tin trong 3 năm qua: 3795 chars -> 5 chunks
+Split ĐIỂM CHUẨN Trường Đại học Công nghệ Thông tin, ĐHQG ...: 6544 chars -> 13 chunks
+[Retriever] [Prioritize] Added 1 table chunks before retrieval output
+[ChunkRanker] Query: điểm chuẩn ngành công nghệ thông tin các trường năm 2024...
+[ChunkRanker] Input chunks: 4
+[ChunkRanker] Query: điểm chuẩn ngành công nghệ thông tin các trường năm 2024...
+[ChunkRanker] Input chunks: 3
+[ChunkRanker] Max score: 0.9997, Threshold: 0.4998 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.9997 (KEEP) | Quốc Việt 22/07/2024 10:39 Ngành Công nghệ thông tin luôn nằ...
+  [2] 0.9063 (KEEP) | | STT | Tên trường | 6 | Trường Đại học Hà Nội | 25,7 - 26,0...
+  [3] 0.8968 (KEEP) | | STT | Tên trường | 20 | Trường Đại học Công nghiệp TP.HCM ...
+  [4] 0.8493 (KEEP) | ### Điểm chuẩn ngành Công nghệ thông tin trong 3 năm qua...
+[ChunkRanker] Output chunks: 4 (filtered 0)
+INFO 05-05 05:59:56 [async_llm_engine.py:177] Finished request 59ac28d06c634005a67c3fd86c41cf9f.
+  ✓ SQ#3 DONE  web=2 rag=1 conf=0.95
+      Fact[3]: học phí ngành CNTT của các trường năm 2024
+[ChunkRanker] Max score: 0.9973, Threshold: 0.4987 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.9973 (KEEP) | Theo đó, điểm chuẩn của trường từ 25,55 -28,3. Ngành Trí tuệ...
+  [2] 0.9915 (KEEP) | Trường Đại học Công nghệ Thông tin là một trung tâm đào tạo ...
+  [3] 0.9817 (KEEP) | ##### ĐIỂM CHUẨN Trường Đại học Công nghệ Thông tin, ĐHQG TP...
+[ChunkRanker] Output chunks: 3 (filtered 0)
+[Retriever] RAG: 1.08265s
+[Retriever] [ChunkProcessor] 7 -> 1 chunks (queries=1)
+[DocumentQualityGate] Raw retrieve -> web_sources=2, rag_sources=1
+
+[DocumentQualityGate] STEP 3/3 - Validate and score web documents
+[DocumentQualityGate] Thresholds -> final_score>=0.58, relevance>=0.25, trust>=0.50, strict_mode=True
+[DocumentQualityGate] [01] PASS | final=0.800 (rel=0.778, trust=0.600, fresh=1.000, rich=1.000, spam=0.000) | title=ĐIỂM CHUẨN Trường Đại học Công nghệ Thông tin, ĐHQG ... | url=https://xaydungchinhsach.chinhphu.vn/diem-chuan-truong-dai-hoc-cong-nghe-thong-tin-dhqg-tphcm-2024-119240818225745588.htm
+[DocumentQualityGate] [02] PASS | final=0.750 (rel=0.667, trust=0.600, fresh=1.000, rich=1.000, spam=0.000) | title=Điểm chuẩn ngành Công nghệ thông tin trong 3 năm qua | url=https://daibieunhandan.vn/diem-chuan-nganh-cong-nghe-thong-tin-trong-3-nam-qua-10342269.html
+[DocumentQualityGate] Result -> web_sources=2/2, rag_sources=1/1, max_docs_after_gate=3
+[VLLM] fact_extractor | Instruction length: 306 | Prompt length: 1906 | kwargs: None
+INFO 05-05 05:59:56 [async_llm_engine.py:209] Added request c2c19a62353c49b680a3bb91b8e47361.
+INFO 05-05 05:59:58 [metrics.py:386] Avg prompt throughput: 156.4 tokens/s, Avg generation throughput: 31.6 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 2.0%, CPU KV cache usage: 0.0%.
+INFO 05-05 05:59:59 [async_llm_engine.py:177] Finished request c2c19a62353c49b680a3bb91b8e47361.
+  ✓ SQ#2 DONE  web=2 rag=1 conf=0.95
+      Fact[2]: điểm chuẩn ngành CNTT của các trường năm 2024
+[MultiHop] [Hop 3] running 2 sub-q in parallel
+  ▶ SQ#4 START [reasoning/computation] deps=#2
+      Q-raw: lọc các trường có điểm chuẩn ≤ 28 điểm
+      ── Reasoning INPUT (từ 1 dep) ──
+        • dep #2: fact=điểm chuẩn ngành CNTT của các trường năm 2024  | n_chunks=1
+[VLLM] reasoner | Instruction length: 366 | Prompt length: 2289 | kwargs: None
+INFO 05-05 05:59:59 [async_llm_engine.py:209] Added request 2a21540d767e4a0f810e0b97f61ab9b1.
+  ▶ SQ#5 START [reasoning/computation] deps=#3
+      Q-raw: lọc các trường có học phí ≤ 50 triệu/năm
+      ── Reasoning INPUT (từ 1 dep) ──
+        • dep #3: fact=học phí ngành CNTT của các trường năm 2024  | n_chunks=1
+[VLLM] reasoner | Instruction length: 366 | Prompt length: 1182 | kwargs: None
+INFO 05-05 05:59:59 [async_llm_engine.py:209] Added request 92866dc26d1e4a74a2fee36382a4e813.
+INFO 05-05 06:00:03 [async_llm_engine.py:177] Finished request 2a21540d767e4a0f810e0b97f61ab9b1.
+[MultiHop]   SQ#4 reasoner OK conf=0.95 answer_preview=Trường Đại học Công nghệ Thông tin, ĐHQG TPHCM
+      Q-rewritten: lọc các trường có điểm chuẩn ≤ 28 điểm (tức điểm chuẩn ngành CNTT của các trường năm 2024)
+  ✓ SQ#4 DONE  web=0 rag=1 conf=0.95
+      Reasoner OUTPUT: Trường Đại học Công nghệ Thông tin, ĐHQG TPHCM
+INFO 05-05 06:00:03 [metrics.py:386] Avg prompt throughput: 294.3 tokens/s, Avg generation throughput: 59.3 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 1.6%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:00:04 [async_llm_engine.py:177] Finished request 92866dc26d1e4a74a2fee36382a4e813.
+[MultiHop]   SQ#5 reasoner OK conf=0.80 answer_preview=Các trường đào tạo ngành CNTT có học phí ≤ 50 triệu/năm được liệt kê dưới đây;
+      Q-rewritten: lọc các trường có học phí ≤ 50 triệu/năm (tức học phí ngành CNTT của các trường năm 2024)
+  ✓ SQ#5 DONE  web=0 rag=1 conf=0.80
+      Reasoner OUTPUT: Các trường đào tạo ngành CNTT có học phí ≤ 50 triệu/năm được liệt kê dưới đây;
+[MultiHop] [Aggregate] web=6 rag=5 hops=3
+────────────────────────────────────────────────────────────────────────────────
+[DECOMPOSE result] 5 sub-question(s), sẽ chạy trong 3 hop(s)
+DAG plan:
+  • SQ#1 [web/list] deps=(root)
+      danh sách các trường đào tạo ngành CNTT năm 2024
+  • SQ#2 [local_db/numeric] deps=#1
+      điểm chuẩn ngành CNTT của các trường năm 2024
+  • SQ#3 [local_db/numeric] deps=#1
+      học phí ngành CNTT của các trường năm 2024
+  • SQ#4 [reasoning/computation] deps=#2
+      lọc các trường có điểm chuẩn ≤ 28 điểm
+  • SQ#5 [reasoning/computation] deps=#3
+      lọc các trường có học phí ≤ 50 triệu/năm
+────────────────────────────────────────────────────────────────────────────────
+[Step 2/4] EXECUTE → chạy hops theo topological order (sub-q ready song song)
+            (chi tiết từng SQ được in real-time trong _execute_subq_logged)
+────────────────────────────────────────────────────────────────────────────────
+[Step 3/4] AGGREGATE → dedup theo (url, chunk_index): web=6 chunks, rag=5 chunks
+  ⤷ SQ#1: contributed web=2 rag=1 fact=yes
+  ⤷ SQ#2: contributed web=2 rag=1 fact=yes
+  ⤷ SQ#3: contributed web=2 rag=1 fact=yes
+  ⤷ SQ#4: contributed web=0 rag=1 fact=yes
+  ⤷ SQ#5: contributed web=0 rag=1 fact=yes
+────────────────────────────────────────────────────────────────────────────────
+[Step 4/4] FORWARD → SufficiencyGate kiểm tra → Reader Qwen3-4B sinh câu trả lời
+════════════════════════════════════════════════════════════════════════════════ [MULTI-HOP] DONE
+
+[MULTI-HOP DONE] sub_q=5 | hops=3 | rag=5 | web=6
+[Sufficiency] sufficient=False score=0.010 reason=below_threshold
+
+================================================================================
+[RAG CHUNKS] Total 5 chunks selected for reader:
+--------------------------------------------------------------------------------
+[Chunk 1] title=Chương trình Đào tạo - Trường Đại học Sư phạm Kỹ thuật | url=https://daotao.ute.udn.vn/curriculums.asp | chunk_index=11
+Text preview:
+thuật Điện - Điện tử (Cử nhân) Chuyên ngành Kỹ thuật Điện tử Ngành Công nghệ Kỹ thuật Điện - Điện tử (Kỹ sư) Chuyên ngành Kỹ thuật Điện tử Ngành Công nghệ Kỹ thuật Điện tử - Viễn thông (Cử nhân) Chuyên ngành Điện tử máy tính- mạng truyền thông Ngành Công nghệ Kỹ thuật Điện tử - Viễn thông (Kỹ sư) Chuyên ngành Điện tử máy tính- mạng truyền thông Ngành Công nghệ Kỹ thuật Điều khiển và Tự động hóa (C
+--------------------------------------------------------------------------------
+[Chunk 2] title=ĐIỂM CHUẨN Trường Đại học Công nghệ Thông tin, ĐHQG ... | url=https://xaydungchinhsach.chinhphu.vn/diem-chuan-truong-dai-hoc-cong-nghe-thong-tin-dhqg-tphcm-2024-119240818225745588.htm | chunk_index=4
+Text preview:
+Theo đó, điểm chuẩn của trường từ 25,55 -28,3. Ngành Trí tuệ Nhân tạo là ngành có điểm chuẩn cao nhất 28,3. Tiếp theo là các ngành Khoa học Dữ liệu và Khoa học Máy tính.
+Điểm chuẩn trúng tuyển (đã tính điểm ưu tiên nếu có) cho các tổ hợp môn thi A00/A01/D01/D06/D07 như sau:
+Thí sinh có thể tra cứu giấy báo trúng tuyển và gọi nhập học vào lúc 09h00 ngày 19/8/2024 tại cổng thông tin tuyển sinh của T
+--------------------------------------------------------------------------------
+[Chunk 3] title=Học phí ngành Công nghệ Thông tin các trường Đại học năm 2024 | url=https://thitruongtaichinhtiente.vn/hoc-phi-nganh-cong-nghe-thong-tin-cac-truong-dai-hoc-nam-2024-60328.html | chunk_index=1
+Text preview:
+### Học phí ngành Công nghệ Thông tin các trường Đại học năm 2024
+--------------------------------------------------------------------------------
+[Chunk 4] title=Bước suy luận #4 | url=multihop://reasoning/sq_4 | chunk_index=0
+Text preview:
+[Kết quả bước suy luận: lọc các trường có điểm chuẩn ≤ 28 điểm]
+Đáp án: Trường Đại học Công nghệ Thông tin, ĐHQG TPHCM
+Bằng chứng đầu vào:
+- Từ sub-question #2: điểm chuẩn ngành CNTT của các trường năm 2024
+--------------------------------------------------------------------------------
+[Chunk 5] title=Bước suy luận #5 | url=multihop://reasoning/sq_5 | chunk_index=0
+Text preview:
+[Kết quả bước suy luận: lọc các trường có học phí ≤ 50 triệu/năm]
+Đáp án: Các trường đào tạo ngành CNTT có học phí ≤ 50 triệu/năm được liệt kê dưới đây;
+Bằng chứng đầu vào:
+- Từ sub-question #3: học phí ngành CNTT của các trường năm 2024
+================================================================================
+
+================================================================================
+[RAG CONTEXT] Formatted chunks sent to reader:
+--------------------------------------------------------------------------------
+[1] Chương trình Đào tạo - Trường Đại học Sư phạm Kỹ thuật
+
+URL: https://daotao.ute.udn.vn/curriculums.asp
+
+thuật Điện - Điện tử (Cử nhân) Chuyên ngành Kỹ thuật Điện tử Ngành Công nghệ Kỹ thuật Điện - Điện tử (Kỹ sư) Chuyên ngành Kỹ thuật Điện tử Ngành Công nghệ Kỹ thuật Điện tử - Viễn thông (Cử nhân) Chuyên ngành Điện tử máy tính- mạng truyền thông Ngành Công nghệ Kỹ thuật Điện tử - Viễn thông (Kỹ sư) Chuyên ngành Điện tử máy tính- mạng truyền thông Ngành Công nghệ Kỹ thuật Điều khiển và Tự động hóa (Cử nhân) Ngành Công nghệ Kỹ thuật Điều khiển và Tự động hóa (Kỹ sư) Ngành Công nghệ Thông tin (Cử nhân) Ngành Công nghệ Thông tin (Kỹ sư) Ngành Công nghệ Kỹ thuật Xây dựng (Cử nhân) Chuyên ngành Xây dựng Dân dụng & Công nghiệp Ngành Công nghệ Kỹ thuật Xây dựng (Kỹ sư) Chuyên ngành Xây dựng Dân dụng & Công nghiệp Ngành Công nghệ Kỹ thuật Giao thông (Cử nhân) Chuyên ngành Xây dựng Cầu đường Ngành Công nghệ Kỹ thuật Giao thông (Kỹ sư) Chuyên ngành Xây dựng Cầu đường Ngành Kỹ thuật Cơ sở Hạ tầng (Cử nhân) Chuyên ngành Xây dựng hạ tầng đô thị Ngành Kỹ thuật Cơ sở Hạ tầng (Kỹ sư) Chuyên ngành Xây dựng hạ tầng đô thị Ngành Công nghệ Kỹ thuật Môi trường (Cử nhân) Ngành Công nghệ Kỹ thuật Môi trường (Kỹ sư) Ngành Kỹ thuật Thực phẩm (Cử nhân) Ngành Kỹ thuật Thực phẩm (Kỹ sư) Ngành Sư phạm Kỹ thuật công nghiệp Ngành Công nghệ kỹ thuật Kiến trúc Hồ sơ mở Ngành Công nghệ kỹ thuật Kiến trúc Chương trình Đào tạo - áp dụng khóa đào tạo 2019 Ngành Công nghệ Kỹ thuật Cơ khí (Cử nhân) Ngành Công nghệ Kỹ thuật Cơ khí (Kỹ sư) Ngành Công nghệ Kỹ thuật Ô tô (Cử nhân) Ngành Công nghệ Kỹ thuật Ô tô (Kỹ sư) Ngành Công nghệ Kỹ thuật Nhiệt (Cử nhân) Ngành Công nghệ Kỹ thuật Nhiệt (Kỹ sư) Ngành Công nghệ Kỹ thuật Cơ Điện tử (Cử nhân) Ngành
+
+---
+
+[2] ĐIỂM CHUẨN Trường Đại học Công nghệ Thông tin, ĐHQG ...
+
+URL: https://xaydungchinhsach.chinhphu.vn/diem-chuan-truong-dai-hoc-cong-nghe-thong-tin-dhqg-tphcm-2024-119240818225745588.htm
+
+Theo đó, điểm chuẩn của trường từ 25,55 -28,3. Ngành Trí tuệ Nhân tạo là ngành có điểm chuẩn cao nhất 28,3. Tiếp theo là các ngành Khoa học Dữ liệu và Khoa học Máy tính.
+Điểm chuẩn trúng tuyển (đã tính điểm ưu tiên nếu có) cho các tổ hợp môn thi A00/A01/D01/D06/D07 như sau:
+Thí sinh có thể tra cứu giấy báo trúng tuyển và gọi nhập học vào lúc 09h00 ngày 19/8/2024 tại cổng thông tin tuyển sinh của Trường.
+Thí sinh xác nhận nhập học trực tuyến từ ngày 19/8/2024 đến 17h ngày 27/8/2024 trên Hệ thống Quản lý thi tốt nghiệp THPT của Bộ GD&ĐT (https://thisinh.thitotnghiepthpt.edu.vn/).
+Tất cả thí sinh trúng tuyển đều phải thực hiện xác nhận nhập học. Quá thời hạn trên, thí sinh không xác nhận nhập học xem như từ chối học tại trường.
+Hướng dẫn cụ thể sẽ được đăng trên website tuyển sinh của trường và qua các kênh thông tin của nhà trường. Hotline hỗ trợ: 090.883.1246 hoặc 0971.203.246
+Trường Đại học Công nghệ Thông tin, ĐHQG TPHCM là trường đại học công lập chuyên ngành CNTT được thành lập theo Quyết định số 134/2006/QĐ-TTg ngày 08/06/2006 của Thủ tướng Chính phủ trên cơ sở Trung tâm Phát triển Công nghệ Thông tin. Trường khai giảng năm học đầu tiên vào tháng 10/2006.
+
+---
+
+[3] Học phí ngành Công nghệ Thông tin các trường Đại học năm 202
+
+URL: https://thitruongtaichinhtiente.vn/hoc-phi-nganh-cong-nghe-thong-tin-cac-truong-dai-hoc-nam-2024-60328.html
+
+### Học phí ngành Công nghệ Thông tin các trường Đại học năm 2024
+
+---
+
+[4] Bước suy luận #4
+
+URL: multihop://reasoning/sq_4
+
+[Kết quả bước suy luận: lọc các trường có điểm chuẩn ≤ 28 điểm]
+Đáp án: Trường Đại học Công nghệ Thông tin, ĐHQG TPHCM
+Bằng chứng đầu vào:
+- Từ sub-question #2: điểm chuẩn ngành CNTT của các trường năm 2024
+
+---
+
+[5] Bước suy luận #5
+
+URL: multihop://reasoning/sq_5
+
+[Kết quả bước suy luận: lọc các trường có học phí ≤ 50 triệu/năm]
+Đáp án: Các trường đào tạo ngành CNTT có học phí ≤ 50 triệu/năm được liệt kê dưới đây;
+Bằng chứng đầu vào:
+- Từ sub-question #3: học phí ngành CNTT của các trường năm 2024
+
+---
+================================================================================
+[FINAL PROMPT] Qwen4B input:
+--------------------------------------------------------------------------------
+Hiện tại là năm 2025, sử dụng thông tin mới nhất có thể. 
+Nếu không tìm thấy đủ dữ liệu đáng tin để xây dựng đầy đủ theo form, chỉ trả lời: "Tôi không tìm thấy thông tin phù hợp.".
+Thông tin tham khảo:
+[1] Chương trình Đào tạo - Trường Đại học Sư phạm Kỹ thuật
+
+URL: https://daotao.ute.udn.vn/curriculums.asp
+
+thuật Điện - Điện tử (Cử nhân) Chuyên ngành Kỹ thuật Điện tử Ngành Công nghệ Kỹ thuật Điện - Điện tử (Kỹ sư) Chuyên ngành Kỹ thuật Điện tử Ngành Công nghệ Kỹ thuật Điện tử - Viễn thông (Cử nhân) Chuyên ngành Điện tử máy tính- mạng truyền thông Ngành Công nghệ Kỹ thuật Điện tử - Viễn thông (Kỹ sư) Chuyên ngành Điện tử máy tính- mạng truyền thông Ngành Công nghệ Kỹ thuật Điều khiển và Tự động hóa (Cử nhân) Ngành Công nghệ Kỹ thuật Điều khiển và Tự động hóa (Kỹ sư) Ngành Công nghệ Thông tin (Cử nhân) Ngành Công nghệ Thông tin (Kỹ sư) Ngành Công nghệ Kỹ thuật Xây dựng (Cử nhân) Chuyên ngành Xây dựng Dân dụng & Công nghiệp Ngành Công nghệ Kỹ thuật Xây dựng (Kỹ sư) Chuyên ngành Xây dựng Dân dụng & Công nghiệp Ngành Công nghệ Kỹ thuật Giao thông (Cử nhân) Chuyên ngành Xây dựng Cầu đường Ngành Công nghệ Kỹ thuật Giao thông (Kỹ sư) Chuyên ngành Xây dựng Cầu đường Ngành Kỹ thuật Cơ sở Hạ tầng (Cử nhân) Chuyên ngành Xây dựng hạ tầng đô thị Ngành Kỹ thuật Cơ sở Hạ tầng (Kỹ sư) Chuyên ngành Xây dựng hạ tầng đô thị Ngành Công nghệ Kỹ thuật Môi trường (Cử nhân) Ngành Công nghệ Kỹ thuật Môi trường (Kỹ sư) Ngành Kỹ thuật Thực phẩm (Cử nhân) Ngành Kỹ thuật Thực phẩm (Kỹ sư) Ngành Sư phạm Kỹ thuật công nghiệp Ngành Công nghệ kỹ thuật Kiến trúc Hồ sơ mở Ngành Công nghệ kỹ thuật Kiến trúc Chương trình Đào tạo - áp dụng khóa đào tạo 2019 Ngành Công nghệ Kỹ thuật Cơ khí (Cử nhân) Ngành Công nghệ Kỹ thuật Cơ khí (Kỹ sư) Ngành Công nghệ Kỹ thuật Ô tô (Cử nhân) Ngành Công nghệ Kỹ thuật Ô tô (Kỹ sư) Ngành Công nghệ Kỹ thuật Nhiệt (Cử nhân) Ngành Công nghệ Kỹ thuật Nhiệt (Kỹ sư) Ngành Công nghệ Kỹ thuật Cơ Điện tử (Cử nhân) Ngành
+
+---
+
+[2] ĐIỂM CHUẨN Trường Đại học Công nghệ Thông tin, ĐHQG ...
+
+URL: https://xaydungchinhsach.chinhphu.vn/diem-chuan-truong-dai-hoc-cong-nghe-thong-tin-dhqg-tphcm-2024-119240818225745588.htm
+
+Theo đó, điểm chuẩn của trường từ 25,55 -28,3. Ngành Trí tuệ Nhân tạo là ngành có điểm chuẩn cao nhất 28,3. Tiếp theo là các ngành Khoa học Dữ liệu và Khoa học Máy tính.
+Điểm chuẩn trúng tuyển (đã tính điểm ưu tiên nếu có) cho các tổ hợp môn thi A00/A01/D01/D06/D07 như sau:
+Thí sinh có thể tra cứu giấy báo trúng tuyển và gọi nhập học vào lúc 09h00 ngày 19/8/2024 tại cổng thông tin tuyển sinh của Trường.
+Thí sinh xác nhận nhập học trực tuyến từ ngày 19/8/2024 đến 17h ngày 27/8/2024 trên Hệ thống Quản lý thi tốt nghiệp THPT của Bộ GD&ĐT (https://thisinh.thitotnghiepthpt.edu.vn/).
+Tất cả thí sinh trúng tuyển đều phải thực hiện xác nhận nhập học. Quá thời hạn trên, thí sinh không xác nhận nhập học xem như từ chối học tại trường.
+Hướng dẫn cụ thể sẽ được đăng trên website tuyển sinh của trường và qua các kênh thông tin của nhà trường. Hotline hỗ trợ: 090.883.1246 hoặc 0971.203.246
+Trường Đại học Công nghệ Thông tin, ĐHQG TPHCM là trường đại học công lập chuyên ngành CNTT được thành lập theo Quyết định số 134/2006/QĐ-TTg ngày 08/06/2006 của Thủ tướng Chính phủ trên cơ sở Trung tâm Phát triển Công nghệ Thông tin. Trường khai giảng năm học đầu tiên vào tháng 10/2006.
+
+---
+
+[3] Học phí ngành Công nghệ Thông tin các trường Đại học năm 202
+
+URL: https://thitruongtaichinhtiente.vn/hoc-phi-nganh-cong-nghe-thong-tin-cac-truong-dai-hoc-nam-2024-60328.html
+
+### Học phí ngành Công nghệ Thông tin các trường Đại học năm 2024
+
+---
+
+[4] Bước suy luận #4
+
+URL: multihop://reasoning/sq_4
+
+[Kết quả bước suy luận: lọc các trường có điểm chuẩn ≤ 28 điểm]
+Đáp án: Trường Đại học Công nghệ Thông tin, ĐHQG TPHCM
+Bằng chứng đầu vào:
+- Từ sub-question #2: điểm chuẩn ngành CNTT của các trường năm 2024
+
+---
+
+[5] Bước suy luận #5
+
+URL: multihop://reasoning/sq_5
+
+[Kết quả bước suy luận: lọc các trường có học phí ≤ 50 triệu/năm]
+Đáp án: Các trường đào tạo ngành CNTT có học phí ≤ 50 triệu/năm được liệt kê dưới đây;
+Bằng chứng đầu vào:
+- Từ sub-question #3: học phí ngành CNTT của các trường năm 2024
+
+---
+Câu hỏi:
+Danh sách các trường đào ngành CNTT với điểm chuẩn dưới 28 điểm và học phí dưới 50 triệu/năm
+================================================================================
+
+INFO:     14.248.59.214:0 - "POST /pre_inference HTTP/1.1" 200 OK
+INFO:     14.248.59.214:0 - "POST /inference/a7a8306e-bafd-447c-8049-74ffac14f1d0 HTTP/1.1" 200 OK
+[VLLM] CallType.READER | Instruction length: 362 | Prompt length: 4236 | kwargs: None
+[VLLm] Using Qwen Reader Lora
+INFO 05-05 06:00:06 [async_llm_engine.py:209] Added request 8598d6e84ba7477689881c86bdb3e64e.
+INFO 05-05 06:00:08 [metrics.py:386] Avg prompt throughput: 302.7 tokens/s, Avg generation throughput: 2.9 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 3.5%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:00:13 [metrics.py:386] Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 33.2 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 3.9%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:00:17 [async_llm_engine.py:177] Finished request 8598d6e84ba7477689881c86bdb3e64e.
+{'model_id': 'Qwen/Qwen3-4B$$$1', 'use_websearch': True, 'use_localdb': False, 'auto_source': False, 'max_query': 3, 'query_score_threshold': 0.5, 'engine_type': 'google', 'domain_restrict': False, 'school_domain': False, 'llm_rerank': False, 'page_score_threshold': 0.5, 'chunk_score_threshold': 0.5, 'k_docs': 5, 'k_pages': 3, 'page_rerank': False, 'chunk_rerank': True, 'include_pdf': False, 'include_image': False, 'merge_table': False, 'merge_neighbor': False, 'max_tokens': 2048, 'temperature': 0.5, 'top_p': 0.9, 'top_k': 40, 'max_history': 8, 'enable_quality_gate': True, 'quality_log': True, 'quality_min_score': 0.58, 'quality_min_relevance': 0.25, 'quality_min_trust': 0.5, 'quality_strict_mode': True, 'quality_max_docs': 3}
+[DocumentQualityGate] enable_quality_gate=True | quality_log=True | min_score=0.58 | min_relevance=0.25 | min_trust=0.5 | strict_mode=True | quality_max_docs=3
+
+════════════════════════════════════════════════════════════════════════════════
+║ [MULTI-HOP] PIPELINE START
+║ Question: Danh sách các trường đào ngành CNTT với điểm chuẩn trên 25 điểm và học phí dưới 50 triệu/năm
+║ Config: max_hops=3, max_sub_q=5, subq_max_query=1, fact_extract=True
+════════════════════════════════════════════════════════════════════════════════
+[Step 1/4] DECOMPOSE → LLM phân rã câu hỏi thành DAG sub-questions
+[VLLM] decomposer | Instruction length: 4141 | Prompt length: 101 | kwargs: None
+INFO 05-05 06:09:56 [async_llm_engine.py:209] Added request 2629dccb0ae245d48f76ecbe9c6c0e46.
+INFO 05-05 06:09:57 [metrics.py:386] Avg prompt throughput: 2.5 tokens/s, Avg generation throughput: 0.2 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 3.4%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:10:02 [metrics.py:386] Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 39.3 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 3.8%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:10:05 [async_llm_engine.py:177] Finished request 2629dccb0ae245d48f76ecbe9c6c0e46.
+[Decomposer raw] ```json
+{
+  "sub_questions": [
+    {"id": 1, "text": "danh sách các trường đào tạo ngành CNTT năm 2024", "depends_on": [], "resolver": "web", "evidence_type": "list"},
+    {"id": 2, "text": "điểm chuẩn ngành CNTT của các trường năm 2024", "depends_on": [1], "resolver": "local_db", "evidence_type": "numeric"},
+    {"id": 3, "text": "học phí ngành CNTT của các trường năm 2024", "depends_on": [1], "r...
+[MultiHop] [Decompose] 5 sub-questions
+[MultiHop]   SQ#1 [web/list] deps=[] | danh sách các trường đào tạo ngành CNTT năm 2024
+[MultiHop]   SQ#2 [local_db/numeric] deps=[1] | điểm chuẩn ngành CNTT của các trường năm 2024
+[MultiHop]   SQ#3 [local_db/numeric] deps=[1] | học phí ngành CNTT của các trường năm 2024
+[MultiHop]   SQ#4 [reasoning/computation] deps=[2] | lọc các trường có điểm chuẩn > 25
+[MultiHop]   SQ#5 [reasoning/computation] deps=[3] | lọc các trường có học phí < 50 triệu/năm
+[MultiHop] [Hop 1] running 1 sub-q in parallel
+  ▶ SQ#1 START [web/list] deps=—
+      Q-raw: danh sách các trường đào tạo ngành CNTT năm 2024
+[MultiHop]   SQ#1 auto_source=OFF → forced localdb=False websearch=True (resolver=web bị bỏ qua)
+[VLLM] CallType.KEYWORDS | Instruction length: 338 | Prompt length: 85 | kwargs: None
+INFO 05-05 06:10:05 [async_llm_engine.py:209] Added request f1fa3320d9b8433bad973abe2aa2d69a.
+INFO 05-05 06:10:05 [async_llm_engine.py:177] Finished request f1fa3320d9b8433bad973abe2aa2d69a.
+[RouterRetriever][TIME LLM] year_start=2024 year_end=2024 metric=y
+
+[DocumentQualityGate] STEP 1/3 - Send query to keyword extractor
+[DocumentQualityGate] Question: danh sách các trường đào tạo ngành CNTT năm 2024
+[VLLM] CallType.KEYWORDS | Instruction length: 168 | Prompt length: 8656 | kwargs: None
+INFO 05-05 06:10:05 [async_llm_engine.py:209] Added request 0f4295f477b849279d4955443f349ada.
+INFO 05-05 06:10:07 [metrics.py:386] Avg prompt throughput: 622.6 tokens/s, Avg generation throughput: 30.9 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 6.7%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:10:08 [async_llm_engine.py:177] Finished request 0f4295f477b849279d4955443f349ada.
+[Model] [
+  {
+    "query": "danh sách các trường đào tạo ngành công nghệ thông tin 2024",
+    "priority": 1.0,
+    "info": "thông tin về các trường đào tạo ngành công nghệ thông tin",
+    "school": ""
+  }
+]
+[Model] {'query': 'danh sách các trường đào tạo ngành công nghệ thông tin 2024', 'priority': 1.0, 'info': 'thông tin về các trường đào tạo ngành công nghệ thông tin', 'school': ''}
+[DocumentQualityGate] Extracted queries (1): ['danh sách các trường đào tạo ngành công nghệ thông tin 2024']
+[DocumentQualityGate] STEP 2/3 - Run web search
+[Retriever] Manual llm_rerank=OFF (query_count=1)
+[Retriever] Manual chunk_rerank=ON (query_count=1)
+[Retriever] Websearch: 0.23752s
+[Retriever] Rerank: Skip (llm_rerank=False)
+[Retriever] Snippet Check: 0.00015s
+[Retriever] [Download] Crawling 3 URLs (from 10 candidates)...
+[Page download] Chi tao 3 jobs (k_pages=3, total_urls=10)
+[Page download] Attempt to download 3 pages from 3 urls (PARALLEL, tối đa 3 request cùng lúc)
+[Page download] Cache hit: https://daotao.ute.udn.vn/curriculums.asp...
+[Page download] Cache hit: https://daa.uit.edu.vn/thong-bao-danh-sach-sinh-vien-du-kien...
+[Page download] Task 0 error: 
+[Page download] Tổng requests đã gửi: 1 (bao gồm cả cancelled)
+[Page download] Success: 2/3 pages
+[Page download] Credits: 1 (regular: 1, premium: 0x10)
+[Retriever] [Download] Snippet: 0, Crawled: 2 in 15.88s
+[Retriever] Process: 0.05787s
+Split Thông báo Danh sách sinh viên dự kiến TN đợt 4 năm 2024 - UIT: 454 chars -> 1 chunks
+[ChunkRanker] Query: danh sách các trường đào tạo ngành công nghệ thông tin 2024...
+[ChunkRanker] Input chunks: 1
+[ChunkRanker] Max score: 0.0484, Threshold: 0.0242 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.0484 (KEEP) | T5, 07/11/2024 - 08:35 Chào các bạn sinh viên! Phòng Đào tạo...
+[ChunkRanker] Output chunks: 1 (filtered 0)
+Split Chương trình Đào tạo - Trường Đại học Sư phạm Kỹ thuật: 14402 chars -> 19 chunks
+[Retriever] [Prioritize] Added 3 table chunks before retrieval output
+[ChunkRanker] Query: danh sách các trường đào tạo ngành công nghệ thông tin 2024...
+[ChunkRanker] Input chunks: 6
+[ChunkRanker] Max score: 0.4080, Threshold: 0.2040 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.4080 (KEEP) | thuật Điện - Điện tử (Cử nhân) Chuyên ngành Kỹ thuật Điện tử...
+  [2] 0.2924 (KEEP) | thuật Môi trường (Cử nhân) Ngành Công nghệ Kỹ thuật Môi trườ...
+  [3] 0.1463 (DROP) | nghệ Kỹ thuật Cơ khí Chế tạo Ngành Công nghệ Kỹ thuật Ô tô N...
+  [4] 0.0269 (DROP) | ### Tân Sinh viên 2024  - Danh sách lớp sinh hoạt...
+  [5] 0.0092 (DROP) | | Tham gia khảo sát CTĐT dành cho giảng viên và nhà tuyển dụ...
+[ChunkRanker] Output chunks: 2 (filtered 4)
+[Retriever] RAG: 1.01592s
+[Retriever] [ChunkProcessor] 3 -> 1 chunks (queries=1)
+[DocumentQualityGate] Raw retrieve -> web_sources=2, rag_sources=1
+
+[DocumentQualityGate] STEP 3/3 - Validate and score web documents
+[DocumentQualityGate] Thresholds -> final_score>=0.58, relevance>=0.25, trust>=0.50, strict_mode=True
+[DocumentQualityGate] [01] PASS | final=0.720 (rel=0.600, trust=0.600, fresh=1.000, rich=1.000, spam=0.000) | title=Chương trình Đào tạo - Trường Đại học Sư phạm Kỹ thuật | url=https://daotao.ute.udn.vn/curriculums.asp
+[DocumentQualityGate] [02] PASS | final=0.865 (rel=0.700, trust=1.000, fresh=1.000, rich=1.000, spam=0.000) | title=Thông báo Danh sách sinh viên dự kiến TN đợt 4 năm 2024 - UIT | url=https://daa.uit.edu.vn/thong-bao-danh-sach-sinh-vien-du-kien-tn-dot-4-nam-2024
+[DocumentQualityGate] Result -> web_sources=2/2, rag_sources=1/1, max_docs_after_gate=3
+[VLLM] fact_extractor | Instruction length: 306 | Prompt length: 1932 | kwargs: None
+INFO 05-05 06:10:25 [async_llm_engine.py:209] Added request 80b6909f67f747ec93650ac3dda8a165.
+INFO 05-05 06:10:25 [metrics.py:386] Avg prompt throughput: 39.5 tokens/s, Avg generation throughput: 2.7 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 1.7%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:10:28 [async_llm_engine.py:177] Finished request 80b6909f67f747ec93650ac3dda8a165.
+  ✓ SQ#1 DONE  web=2 rag=1 conf=0.95
+      Fact[1]: Ngành Công nghệ Thông tin (Cử nhân); Ngành Công nghệ Thông tin (Kỹ sư)
+[MultiHop] [Hop 2] running 2 sub-q in parallel
+  ▶ SQ#2 START [local_db/numeric] deps=#1
+      Q-raw: điểm chuẩn ngành CNTT của các trường năm 2024
+[MultiHop]   SQ#2 auto_source=OFF → forced localdb=False websearch=True (resolver=local_db bị bỏ qua)
+[VLLM] CallType.KEYWORDS | Instruction length: 338 | Prompt length: 82 | kwargs: None
+INFO 05-05 06:10:28 [async_llm_engine.py:209] Added request f380f1fbb34d41f4953662f2f15b2b26.
+  ▶ SQ#3 START [local_db/numeric] deps=#1
+      Q-raw: học phí ngành CNTT của các trường năm 2024
+[MultiHop]   SQ#3 auto_source=OFF → forced localdb=False websearch=True (resolver=local_db bị bỏ qua)
+[VLLM] CallType.KEYWORDS | Instruction length: 338 | Prompt length: 79 | kwargs: None
+INFO 05-05 06:10:28 [async_llm_engine.py:209] Added request c64df6d0f22c483b9cb92b8bd9798f57.
+INFO 05-05 06:10:29 [async_llm_engine.py:177] Finished request f380f1fbb34d41f4953662f2f15b2b26.
+INFO 05-05 06:10:29 [async_llm_engine.py:177] Finished request c64df6d0f22c483b9cb92b8bd9798f57.
+[RouterRetriever][TIME LLM] year_start=2024 year_end=2024 metric=y
+
+[DocumentQualityGate] STEP 1/3 - Send query to keyword extractor
+[DocumentQualityGate] Question: điểm chuẩn ngành CNTT của các trường năm 2024
+[VLLM] CallType.KEYWORDS | Instruction length: 168 | Prompt length: 8653 | kwargs: None
+INFO 05-05 06:10:29 [async_llm_engine.py:209] Added request 005ac380311546598324104f967da869.
+[RouterRetriever][TIME LLM] year_start=2024 year_end=2024 metric=y
+
+[DocumentQualityGate] STEP 1/3 - Send query to keyword extractor
+[DocumentQualityGate] Question: học phí ngành CNTT của các trường năm 2024
+[VLLM] CallType.KEYWORDS | Instruction length: 168 | Prompt length: 8650 | kwargs: None
+INFO 05-05 06:10:29 [async_llm_engine.py:209] Added request b6fe9e06b8ef41b58e86ef4be9048dac.
+INFO 05-05 06:10:31 [metrics.py:386] Avg prompt throughput: 1224.2 tokens/s, Avg generation throughput: 30.8 tokens/s, Running: 2 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 13.4%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:10:32 [async_llm_engine.py:177] Finished request b6fe9e06b8ef41b58e86ef4be9048dac.
+[Model] [
+  {
+    "query": "học phí ngành công nghệ thông tin các trường năm 2024",
+    "priority": 1.0,
+    "info": "học phí ngành công nghệ thông tin năm 2024",
+    "school": ""
+  }
+]
+[Model] {'query': 'học phí ngành công nghệ thông tin các trường năm 2024', 'priority': 1.0, 'info': 'học phí ngành công nghệ thông tin năm 2024', 'school': ''}
+[DocumentQualityGate] Extracted queries (1): ['học phí ngành công nghệ thông tin các trường năm 2024']
+[DocumentQualityGate] STEP 2/3 - Run web search
+[Retriever] Manual llm_rerank=OFF (query_count=1)
+[Retriever] Manual chunk_rerank=ON (query_count=1)
+INFO 05-05 06:10:32 [async_llm_engine.py:177] Finished request 005ac380311546598324104f967da869.
+[Model] [
+  {
+    "query": "điểm chuẩn ngành công nghệ thông tin các trường năm 2024",
+    "priority": 1.0,
+    "info": "điểm chuẩn ngành công nghệ thông tin của các trường năm 2024",
+    "school": ""
+  }
+]
+[Model] {'query': 'điểm chuẩn ngành công nghệ thông tin các trường năm 2024', 'priority': 1.0, 'info': 'điểm chuẩn ngành công nghệ thông tin của các trường năm 2024', 'school': ''}
+[DocumentQualityGate] Extracted queries (1): ['điểm chuẩn ngành công nghệ thông tin các trường năm 2024']
+[DocumentQualityGate] STEP 2/3 - Run web search
+[Retriever] Manual llm_rerank=OFF (query_count=1)
+[Retriever] Manual chunk_rerank=ON (query_count=1)
+[Retriever] Websearch: 0.34971s
+[Retriever] Rerank: Skip (llm_rerank=False)
+[Retriever] Snippet Check: 0.00036s
+[Retriever] [Download] Crawling 3 URLs (from 10 candidates)...
+[Page download] Chi tao 3 jobs (k_pages=3, total_urls=10)
+[Page download] Attempt to download 3 pages from 3 urls (PARALLEL, tối đa 3 request cùng lúc)
+[Page download] Cache hit: https://xaydungchinhsach.chinhphu.vn/diem-chuan-truong-dai-h...
+[Page download] Cache hit: https://laodong.vn/giao-duc/diem-chuan-2024-nganh-cong-nghe-...
+[Page download] Cache hit: https://daibieunhandan.vn/diem-chuan-nganh-cong-nghe-thong-t...
+[Page download] Tổng requests đã gửi: 0 (bao gồm cả cancelled)
+[Page download] Success: 3/3 pages
+[Page download] Credits: 0 (regular: 0, premium: 0x10)
+[Retriever] [Download] Snippet: 0, Crawled: 3 in 0.00s
+[Retriever] Process: 0.04936s
+[Retriever] Websearch: 0.01265s
+[Retriever] Rerank: Skip (llm_rerank=False)
+[Retriever] Snippet Check: 0.00025s
+[Retriever] [Download] Crawling 3 URLs (from 10 candidates)...
+[Page download] Chi tao 3 jobs (k_pages=3, total_urls=10)
+[Page download] Attempt to download 3 pages from 3 urls (PARALLEL, tối đa 3 request cùng lúc)
+[Page download] Cache hit: https://thitruongtaichinhtiente.vn/hoc-phi-nganh-cong-nghe-t...
+[Page download] Cache hit: https://laodong.vn/giao-duc/hoc-phi-nganh-cong-nghe-thong-ti...
+[Page download] Cache hit: https://thuvienphapluat.vn/hoi-dap-phap-luat/hoc-phi-nganh-c...
+[Page download] Tổng requests đã gửi: 0 (bao gồm cả cancelled)
+[Page download] Success: 3/3 pages
+[Page download] Credits: 0 (regular: 0, premium: 0x10)
+[Retriever] [Download] Snippet: 0, Crawled: 3 in 0.00s
+[Retriever] Process: 0.06775s
+Split Điểm chuẩn ngành Công nghệ thông tin trong 3 năm qua: 3795 chars -> 5 chunks
+Split ĐIỂM CHUẨN Trường Đại học Công nghệ Thông tin, ĐHQG ...: 6544 chars -> 13 chunks
+Split Học phí ngành Công nghệ Thông tin các trường Đại học năm 2024: 6214 chars -> 5 chunks
+Split Học phí ngành Công nghệ thông tin tại các trường đại học năm ...: 9434 chars -> 11 chunks
+[Retriever] [Prioritize] Added 1 table chunks before retrieval output
+[ChunkRanker] Query: điểm chuẩn ngành công nghệ thông tin các trường năm 2024...
+[ChunkRanker] Input chunks: 4
+[ChunkRanker] Query: điểm chuẩn ngành công nghệ thông tin các trường năm 2024...
+[ChunkRanker] Input chunks: 3
+[ChunkRanker] Query: học phí ngành công nghệ thông tin các trường năm 2024...
+[ChunkRanker] Input chunks: 3
+[ChunkRanker] Query: học phí ngành công nghệ thông tin các trường năm 2024...
+[ChunkRanker] Input chunks: 3
+[ChunkRanker] Max score: 0.9973, Threshold: 0.4987 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.9973 (KEEP) | Theo đó, điểm chuẩn của trường từ 25,55 -28,3. Ngành Trí tuệ...
+  [2] 0.9915 (KEEP) | Trường Đại học Công nghệ Thông tin là một trung tâm đào tạo ...
+  [3] 0.9817 (KEEP) | ##### ĐIỂM CHUẨN Trường Đại học Công nghệ Thông tin, ĐHQG TP...
+[ChunkRanker] Output chunks: 3 (filtered 0)
+[ChunkRanker] Max score: 0.9997, Threshold: 0.4998 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.9997 (KEEP) | Quốc Việt 22/07/2024 10:39 Ngành Công nghệ thông tin luôn nằ...
+  [2] 0.9063 (KEEP) | | STT | Tên trường | 6 | Trường Đại học Hà Nội | 25,7 - 26,0...
+  [3] 0.8968 (KEEP) | | STT | Tên trường | 20 | Trường Đại học Công nghiệp TP.HCM ...
+  [4] 0.8493 (KEEP) | ### Điểm chuẩn ngành Công nghệ thông tin trong 3 năm qua...
+[ChunkRanker] Output chunks: 4 (filtered 0)
+[Retriever] RAG: 1.09833s
+[ChunkRanker] Max score: 0.9989, Threshold: 0.4995 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.9989 (KEEP) | Thành Nguyễn 23/07/2024 - 14:10 Công nghệ Thông tin là một t...
+  [2] 0.9975 (KEEP) | ### Học phí ngành Công nghệ Thông tin các trường Đại học năm...
+  [3] 0.9869 (KEEP) | Với mức học phí ngành Công nghệ thông tin nói trên, nhiều tr...
+[ChunkRanker] Output chunks: 3 (filtered 0)
+[ChunkRanker] Max score: 0.9993, Threshold: 0.4996 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.9993 (KEEP) | Nhiều trường đại học đã công bố học phí ngành Công nghệ thôn...
+  [2] 0.9970 (KEEP) | ### Học phí ngành Công nghệ thông tin tại các trường đại học...
+  [3] 0.9181 (KEEP) | Xin hỏi học phí ngành Công nghệ thông tin tại các trường đại...
+[ChunkRanker] Output chunks: 3 (filtered 0)
+[Retriever] RAG: 1.60346s
+[Retriever] [ChunkProcessor] 7 -> 1 chunks (queries=1)
+[DocumentQualityGate] Raw retrieve -> web_sources=2, rag_sources=1
+
+[DocumentQualityGate] STEP 3/3 - Validate and score web documents
+[DocumentQualityGate] Thresholds -> final_score>=0.58, relevance>=0.25, trust>=0.50, strict_mode=True
+[DocumentQualityGate] [01] PASS | final=0.800 (rel=0.778, trust=0.600, fresh=1.000, rich=1.000, spam=0.000) | title=ĐIỂM CHUẨN Trường Đại học Công nghệ Thông tin, ĐHQG ... | url=https://xaydungchinhsach.chinhphu.vn/diem-chuan-truong-dai-hoc-cong-nghe-thong-tin-dhqg-tphcm-2024-119240818225745588.htm
+[DocumentQualityGate] [02] PASS | final=0.750 (rel=0.667, trust=0.600, fresh=1.000, rich=1.000, spam=0.000) | title=Điểm chuẩn ngành Công nghệ thông tin trong 3 năm qua | url=https://daibieunhandan.vn/diem-chuan-nganh-cong-nghe-thong-tin-trong-3-nam-qua-10342269.html
+[DocumentQualityGate] Result -> web_sources=2/2, rag_sources=1/1, max_docs_after_gate=3
+[VLLM] fact_extractor | Instruction length: 306 | Prompt length: 1906 | kwargs: None
+INFO 05-05 06:10:35 [async_llm_engine.py:209] Added request 1d0a19594eda42018bdc7e7df16f7611.
+[Retriever] [ChunkProcessor] 6 -> 1 chunks (queries=1)
+[DocumentQualityGate] Raw retrieve -> web_sources=2, rag_sources=1
+
+[DocumentQualityGate] STEP 3/3 - Validate and score web documents
+[DocumentQualityGate] Thresholds -> final_score>=0.58, relevance>=0.25, trust>=0.50, strict_mode=True
+[DocumentQualityGate] [01] PASS | final=0.800 (rel=0.778, trust=0.600, fresh=1.000, rich=1.000, spam=0.000) | title=Học phí ngành Công nghệ Thông tin các trường Đại học năm 2024 | url=https://thitruongtaichinhtiente.vn/hoc-phi-nganh-cong-nghe-thong-tin-cac-truong-dai-hoc-nam-2024-60328.html
+[DocumentQualityGate] [02] PASS | final=0.800 (rel=0.778, trust=0.600, fresh=1.000, rich=1.000, spam=0.000) | title=Học phí ngành Công nghệ thông tin tại các trường đại học năm ... | url=https://thuvienphapluat.vn/hoi-dap-phap-luat/hoc-phi-nganh-cong-nghe-thong-tin-tai-cac-truong-dai-hoc-nam-20242025-la-bao-nhieu-138023842.html
+[DocumentQualityGate] Result -> web_sources=2/2, rag_sources=1/1, max_docs_after_gate=3
+[VLLM] fact_extractor | Instruction length: 306 | Prompt length: 791 | kwargs: None
+INFO 05-05 06:10:35 [async_llm_engine.py:209] Added request 90043cb2ff144302a7d7f2fbbdd349bd.
+INFO 05-05 06:10:36 [metrics.py:386] Avg prompt throughput: 233.1 tokens/s, Avg generation throughput: 33.2 tokens/s, Running: 2 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 2.8%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:10:37 [async_llm_engine.py:177] Finished request 90043cb2ff144302a7d7f2fbbdd349bd.
+  ✓ SQ#3 DONE  web=2 rag=1 conf=0.95
+      Fact[3]: học phí ngành CNTT của các trường năm 2024
+INFO 05-05 06:10:38 [async_llm_engine.py:177] Finished request 1d0a19594eda42018bdc7e7df16f7611.
+  ✓ SQ#2 DONE  web=2 rag=1 conf=0.95
+      Fact[2]: điểm chuẩn ngành CNTT của các trường năm 2024
+[MultiHop] [Hop 3] running 2 sub-q in parallel
+  ▶ SQ#4 START [reasoning/computation] deps=#2
+      Q-raw: lọc các trường có điểm chuẩn > 25
+      ── Reasoning INPUT (từ 1 dep) ──
+        • dep #2: fact=điểm chuẩn ngành CNTT của các trường năm 2024  | n_chunks=1
+[VLLM] reasoner | Instruction length: 366 | Prompt length: 2284 | kwargs: None
+INFO 05-05 06:10:38 [async_llm_engine.py:209] Added request a59cf9995a9d492dac5df938f6ebb924.
+  ▶ SQ#5 START [reasoning/computation] deps=#3
+      Q-raw: lọc các trường có học phí < 50 triệu/năm
+      ── Reasoning INPUT (từ 1 dep) ──
+        • dep #3: fact=học phí ngành CNTT của các trường năm 2024  | n_chunks=1
+[VLLM] reasoner | Instruction length: 366 | Prompt length: 1182 | kwargs: None
+INFO 05-05 06:10:38 [async_llm_engine.py:209] Added request 69792670ae414120abfcd21282b34dd0.
+INFO 05-05 06:10:41 [metrics.py:386] Avg prompt throughput: 293.0 tokens/s, Avg generation throughput: 64.5 tokens/s, Running: 2 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 3.7%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:10:42 [async_llm_engine.py:177] Finished request a59cf9995a9d492dac5df938f6ebb924.
+[MultiHop]   SQ#4 reasoner OK conf=0.95 answer_preview=Trường Đại học Công nghệ Thông tin, ĐHQG TPHCM
+      Q-rewritten: lọc các trường có điểm chuẩn > 25 (tức điểm chuẩn ngành CNTT của các trường năm 2024)
+  ✓ SQ#4 DONE  web=0 rag=1 conf=0.95
+      Reasoner OUTPUT: Trường Đại học Công nghệ Thông tin, ĐHQG TPHCM
+INFO 05-05 06:10:45 [async_llm_engine.py:177] Finished request 69792670ae414120abfcd21282b34dd0.
+[MultiHop]   SQ#5 reasoner OK conf=0.80 answer_preview=Trường Đại học Khoa học Tự nhiên - ĐH Quốc gia Hà Nội; Trường Đại học Công nghệ Thông tin - ĐH Bách Khoa Hà Nội; Trường 
+      Q-rewritten: lọc các trường có học phí < 50 triệu/năm (tức học phí ngành CNTT của các trường năm 2024)
+  ✓ SQ#5 DONE  web=0 rag=1 conf=0.80
+      Reasoner OUTPUT: Trường Đại học Khoa học Tự nhiên - ĐH Quốc gia Hà Nội; Trường Đại học Công nghệ Thông tin - ĐH Bách Khoa Hà Nội; Trường Đại học Công nghệ Thông tin - ĐH Bách Khoa TP.HCM
+[MultiHop] [Aggregate] web=6 rag=5 hops=3
+────────────────────────────────────────────────────────────────────────────────
+[DECOMPOSE result] 5 sub-question(s), sẽ chạy trong 3 hop(s)
+DAG plan:
+  • SQ#1 [web/list] deps=(root)
+      danh sách các trường đào tạo ngành CNTT năm 2024
+  • SQ#2 [local_db/numeric] deps=#1
+      điểm chuẩn ngành CNTT của các trường năm 2024
+  • SQ#3 [local_db/numeric] deps=#1
+      học phí ngành CNTT của các trường năm 2024
+  • SQ#4 [reasoning/computation] deps=#2
+      lọc các trường có điểm chuẩn > 25
+  • SQ#5 [reasoning/computation] deps=#3
+      lọc các trường có học phí < 50 triệu/năm
+────────────────────────────────────────────────────────────────────────────────
+[Step 2/4] EXECUTE → chạy hops theo topological order (sub-q ready song song)
+            (chi tiết từng SQ được in real-time trong _execute_subq_logged)
+────────────────────────────────────────────────────────────────────────────────
+[Step 3/4] AGGREGATE → dedup theo (url, chunk_index): web=6 chunks, rag=5 chunks
+  ⤷ SQ#1: contributed web=2 rag=1 fact=yes
+  ⤷ SQ#2: contributed web=2 rag=1 fact=yes
+  ⤷ SQ#3: contributed web=2 rag=1 fact=yes
+  ⤷ SQ#4: contributed web=0 rag=1 fact=yes
+  ⤷ SQ#5: contributed web=0 rag=1 fact=yes
+────────────────────────────────────────────────────────────────────────────────
+[Step 4/4] FORWARD → SufficiencyGate kiểm tra → Reader Qwen3-4B sinh câu trả lời
+════════════════════════════════════════════════════════════════════════════════ [MULTI-HOP] DONE
+
+[MULTI-HOP DONE] sub_q=5 | hops=3 | rag=5 | web=6
+[Sufficiency] sufficient=False score=0.010 reason=below_threshold
+
+================================================================================
+[RAG CHUNKS] Total 5 chunks selected for reader:
+--------------------------------------------------------------------------------
+[Chunk 1] title=Chương trình Đào tạo - Trường Đại học Sư phạm Kỹ thuật | url=https://daotao.ute.udn.vn/curriculums.asp | chunk_index=11
+Text preview:
+thuật Điện - Điện tử (Cử nhân) Chuyên ngành Kỹ thuật Điện tử Ngành Công nghệ Kỹ thuật Điện - Điện tử (Kỹ sư) Chuyên ngành Kỹ thuật Điện tử Ngành Công nghệ Kỹ thuật Điện tử - Viễn thông (Cử nhân) Chuyên ngành Điện tử máy tính- mạng truyền thông Ngành Công nghệ Kỹ thuật Điện tử - Viễn thông (Kỹ sư) Chuyên ngành Điện tử máy tính- mạng truyền thông Ngành Công nghệ Kỹ thuật Điều khiển và Tự động hóa (C
+--------------------------------------------------------------------------------
+[Chunk 2] title=ĐIỂM CHUẨN Trường Đại học Công nghệ Thông tin, ĐHQG ... | url=https://xaydungchinhsach.chinhphu.vn/diem-chuan-truong-dai-hoc-cong-nghe-thong-tin-dhqg-tphcm-2024-119240818225745588.htm | chunk_index=4
+Text preview:
+Theo đó, điểm chuẩn của trường từ 25,55 -28,3. Ngành Trí tuệ Nhân tạo là ngành có điểm chuẩn cao nhất 28,3. Tiếp theo là các ngành Khoa học Dữ liệu và Khoa học Máy tính.
+Điểm chuẩn trúng tuyển (đã tính điểm ưu tiên nếu có) cho các tổ hợp môn thi A00/A01/D01/D06/D07 như sau:
+Thí sinh có thể tra cứu giấy báo trúng tuyển và gọi nhập học vào lúc 09h00 ngày 19/8/2024 tại cổng thông tin tuyển sinh của T
+--------------------------------------------------------------------------------
+[Chunk 3] title=Học phí ngành Công nghệ Thông tin các trường Đại học năm 2024 | url=https://thitruongtaichinhtiente.vn/hoc-phi-nganh-cong-nghe-thong-tin-cac-truong-dai-hoc-nam-2024-60328.html | chunk_index=1
+Text preview:
+### Học phí ngành Công nghệ Thông tin các trường Đại học năm 2024
+--------------------------------------------------------------------------------
+[Chunk 4] title=Bước suy luận #4 | url=multihop://reasoning/sq_4 | chunk_index=0
+Text preview:
+[Kết quả bước suy luận: lọc các trường có điểm chuẩn > 25]
+Đáp án: Trường Đại học Công nghệ Thông tin, ĐHQG TPHCM
+Bằng chứng đầu vào:
+- Từ sub-question #2: điểm chuẩn ngành CNTT của các trường năm 2024
+--------------------------------------------------------------------------------
+[Chunk 5] title=Bước suy luận #5 | url=multihop://reasoning/sq_5 | chunk_index=0
+Text preview:
+[Kết quả bước suy luận: lọc các trường có học phí < 50 triệu/năm]
+Đáp án: Trường Đại học Khoa học Tự nhiên - ĐH Quốc gia Hà Nội; Trường Đại học Công nghệ Thông tin - ĐH Bách Khoa Hà Nội; Trường Đại học Công nghệ Thông tin - ĐH Bách Khoa TP.HCM
+Bằng chứng đầu vào:
+- Từ sub-question #3: học phí ngành CNTT của các trường năm 2024
+================================================================================
+
+================================================================================
+[RAG CONTEXT] Formatted chunks sent to reader:
+--------------------------------------------------------------------------------
+[1] Chương trình Đào tạo - Trường Đại học Sư phạm Kỹ thuật
+
+URL: https://daotao.ute.udn.vn/curriculums.asp
+
+thuật Điện - Điện tử (Cử nhân) Chuyên ngành Kỹ thuật Điện tử Ngành Công nghệ Kỹ thuật Điện - Điện tử (Kỹ sư) Chuyên ngành Kỹ thuật Điện tử Ngành Công nghệ Kỹ thuật Điện tử - Viễn thông (Cử nhân) Chuyên ngành Điện tử máy tính- mạng truyền thông Ngành Công nghệ Kỹ thuật Điện tử - Viễn thông (Kỹ sư) Chuyên ngành Điện tử máy tính- mạng truyền thông Ngành Công nghệ Kỹ thuật Điều khiển và Tự động hóa (Cử nhân) Ngành Công nghệ Kỹ thuật Điều khiển và Tự động hóa (Kỹ sư) Ngành Công nghệ Thông tin (Cử nhân) Ngành Công nghệ Thông tin (Kỹ sư) Ngành Công nghệ Kỹ thuật Xây dựng (Cử nhân) Chuyên ngành Xây dựng Dân dụng & Công nghiệp Ngành Công nghệ Kỹ thuật Xây dựng (Kỹ sư) Chuyên ngành Xây dựng Dân dụng & Công nghiệp Ngành Công nghệ Kỹ thuật Giao thông (Cử nhân) Chuyên ngành Xây dựng Cầu đường Ngành Công nghệ Kỹ thuật Giao thông (Kỹ sư) Chuyên ngành Xây dựng Cầu đường Ngành Kỹ thuật Cơ sở Hạ tầng (Cử nhân) Chuyên ngành Xây dựng hạ tầng đô thị Ngành Kỹ thuật Cơ sở Hạ tầng (Kỹ sư) Chuyên ngành Xây dựng hạ tầng đô thị Ngành Công nghệ Kỹ thuật Môi trường (Cử nhân) Ngành Công nghệ Kỹ thuật Môi trường (Kỹ sư) Ngành Kỹ thuật Thực phẩm (Cử nhân) Ngành Kỹ thuật Thực phẩm (Kỹ sư) Ngành Sư phạm Kỹ thuật công nghiệp Ngành Công nghệ kỹ thuật Kiến trúc Hồ sơ mở Ngành Công nghệ kỹ thuật Kiến trúc Chương trình Đào tạo - áp dụng khóa đào tạo 2019 Ngành Công nghệ Kỹ thuật Cơ khí (Cử nhân) Ngành Công nghệ Kỹ thuật Cơ khí (Kỹ sư) Ngành Công nghệ Kỹ thuật Ô tô (Cử nhân) Ngành Công nghệ Kỹ thuật Ô tô (Kỹ sư) Ngành Công nghệ Kỹ thuật Nhiệt (Cử nhân) Ngành Công nghệ Kỹ thuật Nhiệt (Kỹ sư) Ngành Công nghệ Kỹ thuật Cơ Điện tử (Cử nhân) Ngành
+
+---
+
+[2] ĐIỂM CHUẨN Trường Đại học Công nghệ Thông tin, ĐHQG ...
+
+URL: https://xaydungchinhsach.chinhphu.vn/diem-chuan-truong-dai-hoc-cong-nghe-thong-tin-dhqg-tphcm-2024-119240818225745588.htm
+
+Theo đó, điểm chuẩn của trường từ 25,55 -28,3. Ngành Trí tuệ Nhân tạo là ngành có điểm chuẩn cao nhất 28,3. Tiếp theo là các ngành Khoa học Dữ liệu và Khoa học Máy tính.
+Điểm chuẩn trúng tuyển (đã tính điểm ưu tiên nếu có) cho các tổ hợp môn thi A00/A01/D01/D06/D07 như sau:
+Thí sinh có thể tra cứu giấy báo trúng tuyển và gọi nhập học vào lúc 09h00 ngày 19/8/2024 tại cổng thông tin tuyển sinh của Trường.
+Thí sinh xác nhận nhập học trực tuyến từ ngày 19/8/2024 đến 17h ngày 27/8/2024 trên Hệ thống Quản lý thi tốt nghiệp THPT của Bộ GD&ĐT (https://thisinh.thitotnghiepthpt.edu.vn/).
+Tất cả thí sinh trúng tuyển đều phải thực hiện xác nhận nhập học. Quá thời hạn trên, thí sinh không xác nhận nhập học xem như từ chối học tại trường.
+Hướng dẫn cụ thể sẽ được đăng trên website tuyển sinh của trường và qua các kênh thông tin của nhà trường. Hotline hỗ trợ: 090.883.1246 hoặc 0971.203.246
+Trường Đại học Công nghệ Thông tin, ĐHQG TPHCM là trường đại học công lập chuyên ngành CNTT được thành lập theo Quyết định số 134/2006/QĐ-TTg ngày 08/06/2006 của Thủ tướng Chính phủ trên cơ sở Trung tâm Phát triển Công nghệ Thông tin. Trường khai giảng năm học đầu tiên vào tháng 10/2006.
+
+---
+
+[3] Học phí ngành Công nghệ Thông tin các trường Đại học năm 202
+
+URL: https://thitruongtaichinhtiente.vn/hoc-phi-nganh-cong-nghe-thong-tin-cac-truong-dai-hoc-nam-2024-60328.html
+
+### Học phí ngành Công nghệ Thông tin các trường Đại học năm 2024
+
+---
+
+[4] Bước suy luận #4
+
+URL: multihop://reasoning/sq_4
+
+[Kết quả bước suy luận: lọc các trường có điểm chuẩn > 25]
+Đáp án: Trường Đại học Công nghệ Thông tin, ĐHQG TPHCM
+Bằng chứng đầu vào:
+- Từ sub-question #2: điểm chuẩn ngành CNTT của các trường năm 2024
+
+---
+
+[5] Bước suy luận #5
+
+URL: multihop://reasoning/sq_5
+
+[Kết quả bước suy luận: lọc các trường có học phí < 50 triệu/năm]
+Đáp án: Trường Đại học Khoa học Tự nhiên - ĐH Quốc gia Hà Nội; Trường Đại học Công nghệ Thông tin - ĐH Bách Khoa Hà Nội; Trường Đại học Công nghệ Thông tin - ĐH Bách Khoa TP.HCM
+Bằng chứng đầu vào:
+- Từ sub-question #3: học phí ngành CNTT của các trường năm 2024
+
+---
+================================================================================
+[FINAL PROMPT] Qwen4B input:
+--------------------------------------------------------------------------------
+Hiện tại là năm 2025, sử dụng thông tin mới nhất có thể. 
+Nếu không tìm thấy đủ dữ liệu đáng tin để xây dựng đầy đủ theo form, chỉ trả lời: "Tôi không tìm thấy thông tin phù hợp.".
+Thông tin tham khảo:
+[1] Chương trình Đào tạo - Trường Đại học Sư phạm Kỹ thuật
+
+URL: https://daotao.ute.udn.vn/curriculums.asp
+
+thuật Điện - Điện tử (Cử nhân) Chuyên ngành Kỹ thuật Điện tử Ngành Công nghệ Kỹ thuật Điện - Điện tử (Kỹ sư) Chuyên ngành Kỹ thuật Điện tử Ngành Công nghệ Kỹ thuật Điện tử - Viễn thông (Cử nhân) Chuyên ngành Điện tử máy tính- mạng truyền thông Ngành Công nghệ Kỹ thuật Điện tử - Viễn thông (Kỹ sư) Chuyên ngành Điện tử máy tính- mạng truyền thông Ngành Công nghệ Kỹ thuật Điều khiển và Tự động hóa (Cử nhân) Ngành Công nghệ Kỹ thuật Điều khiển và Tự động hóa (Kỹ sư) Ngành Công nghệ Thông tin (Cử nhân) Ngành Công nghệ Thông tin (Kỹ sư) Ngành Công nghệ Kỹ thuật Xây dựng (Cử nhân) Chuyên ngành Xây dựng Dân dụng & Công nghiệp Ngành Công nghệ Kỹ thuật Xây dựng (Kỹ sư) Chuyên ngành Xây dựng Dân dụng & Công nghiệp Ngành Công nghệ Kỹ thuật Giao thông (Cử nhân) Chuyên ngành Xây dựng Cầu đường Ngành Công nghệ Kỹ thuật Giao thông (Kỹ sư) Chuyên ngành Xây dựng Cầu đường Ngành Kỹ thuật Cơ sở Hạ tầng (Cử nhân) Chuyên ngành Xây dựng hạ tầng đô thị Ngành Kỹ thuật Cơ sở Hạ tầng (Kỹ sư) Chuyên ngành Xây dựng hạ tầng đô thị Ngành Công nghệ Kỹ thuật Môi trường (Cử nhân) Ngành Công nghệ Kỹ thuật Môi trường (Kỹ sư) Ngành Kỹ thuật Thực phẩm (Cử nhân) Ngành Kỹ thuật Thực phẩm (Kỹ sư) Ngành Sư phạm Kỹ thuật công nghiệp Ngành Công nghệ kỹ thuật Kiến trúc Hồ sơ mở Ngành Công nghệ kỹ thuật Kiến trúc Chương trình Đào tạo - áp dụng khóa đào tạo 2019 Ngành Công nghệ Kỹ thuật Cơ khí (Cử nhân) Ngành Công nghệ Kỹ thuật Cơ khí (Kỹ sư) Ngành Công nghệ Kỹ thuật Ô tô (Cử nhân) Ngành Công nghệ Kỹ thuật Ô tô (Kỹ sư) Ngành Công nghệ Kỹ thuật Nhiệt (Cử nhân) Ngành Công nghệ Kỹ thuật Nhiệt (Kỹ sư) Ngành Công nghệ Kỹ thuật Cơ Điện tử (Cử nhân) Ngành
+
+---
+
+[2] ĐIỂM CHUẨN Trường Đại học Công nghệ Thông tin, ĐHQG ...
+
+URL: https://xaydungchinhsach.chinhphu.vn/diem-chuan-truong-dai-hoc-cong-nghe-thong-tin-dhqg-tphcm-2024-119240818225745588.htm
+
+Theo đó, điểm chuẩn của trường từ 25,55 -28,3. Ngành Trí tuệ Nhân tạo là ngành có điểm chuẩn cao nhất 28,3. Tiếp theo là các ngành Khoa học Dữ liệu và Khoa học Máy tính.
+Điểm chuẩn trúng tuyển (đã tính điểm ưu tiên nếu có) cho các tổ hợp môn thi A00/A01/D01/D06/D07 như sau:
+Thí sinh có thể tra cứu giấy báo trúng tuyển và gọi nhập học vào lúc 09h00 ngày 19/8/2024 tại cổng thông tin tuyển sinh của Trường.
+Thí sinh xác nhận nhập học trực tuyến từ ngày 19/8/2024 đến 17h ngày 27/8/2024 trên Hệ thống Quản lý thi tốt nghiệp THPT của Bộ GD&ĐT (https://thisinh.thitotnghiepthpt.edu.vn/).
+Tất cả thí sinh trúng tuyển đều phải thực hiện xác nhận nhập học. Quá thời hạn trên, thí sinh không xác nhận nhập học xem như từ chối học tại trường.
+Hướng dẫn cụ thể sẽ được đăng trên website tuyển sinh của trường và qua các kênh thông tin của nhà trường. Hotline hỗ trợ: 090.883.1246 hoặc 0971.203.246
+Trường Đại học Công nghệ Thông tin, ĐHQG TPHCM là trường đại học công lập chuyên ngành CNTT được thành lập theo Quyết định số 134/2006/QĐ-TTg ngày 08/06/2006 của Thủ tướng Chính phủ trên cơ sở Trung tâm Phát triển Công nghệ Thông tin. Trường khai giảng năm học đầu tiên vào tháng 10/2006.
+
+---
+
+[3] Học phí ngành Công nghệ Thông tin các trường Đại học năm 202
+
+URL: https://thitruongtaichinhtiente.vn/hoc-phi-nganh-cong-nghe-thong-tin-cac-truong-dai-hoc-nam-2024-60328.html
+
+### Học phí ngành Công nghệ Thông tin các trường Đại học năm 2024
+
+---
+
+[4] Bước suy luận #4
+
+URL: multihop://reasoning/sq_4
+
+[Kết quả bước suy luận: lọc các trường có điểm chuẩn > 25]
+Đáp án: Trường Đại học Công nghệ Thông tin, ĐHQG TPHCM
+Bằng chứng đầu vào:
+- Từ sub-question #2: điểm chuẩn ngành CNTT của các trường năm 2024
+
+---
+
+[5] Bước suy luận #5
+
+URL: multihop://reasoning/sq_5
+
+[Kết quả bước suy luận: lọc các trường có học phí < 50 triệu/năm]
+Đáp án: Trường Đại học Khoa học Tự nhiên - ĐH Quốc gia Hà Nội; Trường Đại học Công nghệ Thông tin - ĐH Bách Khoa Hà Nội; Trường Đại học Công nghệ Thông tin - ĐH Bách Khoa TP.HCM
+Bằng chứng đầu vào:
+- Từ sub-question #3: học phí ngành CNTT của các trường năm 2024
+
+---
+Câu hỏi:
+Danh sách các trường đào ngành CNTT với điểm chuẩn trên 25 điểm và học phí dưới 50 triệu/năm
+================================================================================
+
+INFO:     14.248.59.214:0 - "POST /pre_inference HTTP/1.1" 200 OK
+INFO:     14.248.59.214:0 - "POST /inference/cd57bf81-8c5d-42c3-a674-51c28338b83a HTTP/1.1" 200 OK
+[VLLM] CallType.READER | Instruction length: 362 | Prompt length: 4322 | kwargs: None
+[VLLm] Using Qwen Reader Lora
+INFO 05-05 06:10:47 [async_llm_engine.py:209] Added request b92f13f5cbd945b98937178b6cf2aa20.
+INFO 05-05 06:10:47 [metrics.py:386] Avg prompt throughput: 239.5 tokens/s, Avg generation throughput: 31.4 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 3.6%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:10:52 [metrics.py:386] Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 32.8 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 3.9%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:10:57 [metrics.py:386] Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 32.8 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 4.3%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:10:58 [async_llm_engine.py:177] Finished request b92f13f5cbd945b98937178b6cf2aa20.
+{'model_id': 'Qwen/Qwen3-4B$$$1', 'use_websearch': True, 'use_localdb': False, 'auto_source': False, 'max_query': 3, 'query_score_threshold': 0.5, 'engine_type': 'google', 'domain_restrict': False, 'school_domain': False, 'llm_rerank': False, 'page_score_threshold': 0.5, 'chunk_score_threshold': 0.5, 'k_docs': 5, 'k_pages': 3, 'page_rerank': False, 'chunk_rerank': True, 'include_pdf': False, 'include_image': False, 'merge_table': False, 'merge_neighbor': False, 'max_tokens': 2048, 'temperature': 0.5, 'top_p': 0.9, 'top_k': 40, 'max_history': 8, 'enable_quality_gate': True, 'quality_log': True, 'quality_min_score': 0.58, 'quality_min_relevance': 0.25, 'quality_min_trust': 0.5, 'quality_strict_mode': True, 'quality_max_docs': 3}
+[DocumentQualityGate] enable_quality_gate=True | quality_log=True | min_score=0.58 | min_relevance=0.25 | min_trust=0.5 | strict_mode=True | quality_max_docs=3
+
+════════════════════════════════════════════════════════════════════════════════
+║ [MULTI-HOP] PIPELINE START
+║ Question: So sánh điểm chuẩn và học phí ngành công nghệ thông tin của UET và PTIT
+║ Config: max_hops=3, max_sub_q=5, subq_max_query=1, fact_extract=True
+════════════════════════════════════════════════════════════════════════════════
+[Step 1/4] DECOMPOSE → LLM phân rã câu hỏi thành DAG sub-questions
+[VLLM] decomposer | Instruction length: 4141 | Prompt length: 80 | kwargs: None
+INFO 05-05 06:11:23 [async_llm_engine.py:209] Added request ca9f3a3d4eb04e5397b08898a4f6fead.
+INFO 05-05 06:11:24 [metrics.py:386] Avg prompt throughput: 55.2 tokens/s, Avg generation throughput: 0.6 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 3.4%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:11:29 [metrics.py:386] Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 40.1 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 3.8%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:11:32 [async_llm_engine.py:177] Finished request ca9f3a3d4eb04e5397b08898a4f6fead.
+[Decomposer raw] ```json
+{
+  "sub_questions": [
+    {"id": 1, "text": "điểm chuẩn ngành công nghệ thông tin UET năm 2024", "depends_on": [], "resolver": "local_db", "evidence_type": "numeric"},
+    {"id": 2, "text": "học phí ngành công nghệ thông tin UET năm 2024", "depends_on": [], "resolver": "local_db", "evidence_type": "numeric"},
+    {"id": 3, "text": "điểm chuẩn ngành công nghệ thông tin PTIT năm 2024", "dep...
+[MultiHop] [Decompose] 5 sub-questions
+[MultiHop]   SQ#1 [local_db/numeric] deps=[] | điểm chuẩn ngành công nghệ thông tin UET năm 2024
+[MultiHop]   SQ#2 [local_db/numeric] deps=[] | học phí ngành công nghệ thông tin UET năm 2024
+[MultiHop]   SQ#3 [local_db/numeric] deps=[] | điểm chuẩn ngành công nghệ thông tin PTIT năm 2024
+[MultiHop]   SQ#4 [local_db/numeric] deps=[] | học phí ngành công nghệ thông tin PTIT năm 2024
+[MultiHop]   SQ#5 [reasoning/comparison] deps=[1, 3] | so sánh điểm chuẩn ngành công nghệ thông tin UET và PTIT
+[MultiHop] [Hop 1] running 4 sub-q in parallel
+  ▶ SQ#1 START [local_db/numeric] deps=—
+      Q-raw: điểm chuẩn ngành công nghệ thông tin UET năm 2024
+[MultiHop]   SQ#1 auto_source=OFF → forced localdb=False websearch=True (resolver=local_db bị bỏ qua)
+[VLLM] CallType.KEYWORDS | Instruction length: 338 | Prompt length: 86 | kwargs: None
+INFO 05-05 06:11:32 [async_llm_engine.py:209] Added request 66b606f2cc3644be922f23e6ff19fd5a.
+  ▶ SQ#2 START [local_db/numeric] deps=—
+      Q-raw: học phí ngành công nghệ thông tin UET năm 2024
+[MultiHop]   SQ#2 auto_source=OFF → forced localdb=False websearch=True (resolver=local_db bị bỏ qua)
+[VLLM] CallType.KEYWORDS | Instruction length: 338 | Prompt length: 83 | kwargs: None
+INFO 05-05 06:11:32 [async_llm_engine.py:209] Added request 8d576afd48ad45d5846cae8e9feb66d5.
+  ▶ SQ#3 START [local_db/numeric] deps=—
+      Q-raw: điểm chuẩn ngành công nghệ thông tin PTIT năm 2024
+[MultiHop]   SQ#3 auto_source=OFF → forced localdb=False websearch=True (resolver=local_db bị bỏ qua)
+[VLLM] CallType.KEYWORDS | Instruction length: 338 | Prompt length: 87 | kwargs: None
+INFO 05-05 06:11:32 [async_llm_engine.py:209] Added request f1097ec1ce2041b9b989be50eefe87f1.
+  ▶ SQ#4 START [local_db/numeric] deps=—
+      Q-raw: học phí ngành công nghệ thông tin PTIT năm 2024
+[MultiHop]   SQ#4 auto_source=OFF → forced localdb=False websearch=True (resolver=local_db bị bỏ qua)
+[VLLM] CallType.KEYWORDS | Instruction length: 338 | Prompt length: 84 | kwargs: None
+INFO 05-05 06:11:32 [async_llm_engine.py:209] Added request c522530fbfe2425ba7a955c25f4acb15.
+INFO 05-05 06:11:33 [async_llm_engine.py:177] Finished request 66b606f2cc3644be922f23e6ff19fd5a.
+INFO 05-05 06:11:33 [async_llm_engine.py:177] Finished request 8d576afd48ad45d5846cae8e9feb66d5.
+INFO 05-05 06:11:33 [async_llm_engine.py:177] Finished request f1097ec1ce2041b9b989be50eefe87f1.
+INFO 05-05 06:11:33 [async_llm_engine.py:177] Finished request c522530fbfe2425ba7a955c25f4acb15.
+[RouterRetriever][TIME LLM] year_start=2024 year_end=2024 metric=y
+
+[DocumentQualityGate] STEP 1/3 - Send query to keyword extractor
+[DocumentQualityGate] Question: điểm chuẩn ngành công nghệ thông tin UET năm 2024
+[VLLM] CallType.KEYWORDS | Instruction length: 168 | Prompt length: 8657 | kwargs: None
+INFO 05-05 06:11:33 [async_llm_engine.py:209] Added request 20c34c8cf4f54bb09ed7343fdaf209f5.
+[RouterRetriever][TIME LLM] year_start=2024 year_end=2024 metric=y
+
+[DocumentQualityGate] STEP 1/3 - Send query to keyword extractor
+[DocumentQualityGate] Question: học phí ngành công nghệ thông tin UET năm 2024
+[VLLM] CallType.KEYWORDS | Instruction length: 168 | Prompt length: 8654 | kwargs: None
+INFO 05-05 06:11:33 [async_llm_engine.py:209] Added request c5ef58c078374fcf8b08fdb5bcaf1d60.
+[RouterRetriever][TIME LLM] year_start=2024 year_end=2024 metric=y
+
+[DocumentQualityGate] STEP 1/3 - Send query to keyword extractor
+[DocumentQualityGate] Question: điểm chuẩn ngành công nghệ thông tin PTIT năm 2024
+[VLLM] CallType.KEYWORDS | Instruction length: 168 | Prompt length: 8658 | kwargs: None
+INFO 05-05 06:11:33 [async_llm_engine.py:209] Added request 152e4e4d034d47f59450f9577fb6fca4.
+[RouterRetriever][TIME LLM] year_start=2024 year_end=2024 metric=y
+
+[DocumentQualityGate] STEP 1/3 - Send query to keyword extractor
+[DocumentQualityGate] Question: học phí ngành công nghệ thông tin PTIT năm 2024
+[VLLM] CallType.KEYWORDS | Instruction length: 168 | Prompt length: 8655 | kwargs: None
+INFO 05-05 06:11:33 [async_llm_engine.py:209] Added request b7733d477f8e42a6be70c8497dad7d4e.
+INFO 05-05 06:11:36 [metrics.py:386] Avg prompt throughput: 1671.7 tokens/s, Avg generation throughput: 29.9 tokens/s, Running: 4 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 26.8%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:11:38 [async_llm_engine.py:177] Finished request b7733d477f8e42a6be70c8497dad7d4e.
+[Model] [
+  {
+    "query": "học phí ngành công nghệ thông tin ptit 2024",
+    "priority": 1.0,
+    "info": "học phí ngành công nghệ thông tin năm 2024",
+    "school": "ptit"
+  }
+]
+[Model] {'query': 'học phí ngành công nghệ thông tin ptit 2024', 'priority': 1.0, 'info': 'học phí ngành công nghệ thông tin năm 2024', 'school': 'ptit'}
+[DocumentQualityGate] Extracted queries (1): ['học phí ngành công nghệ thông tin ptit 2024']
+[DocumentQualityGate] STEP 2/3 - Run web search
+[Retriever] Manual llm_rerank=OFF (query_count=1)
+[Retriever] Manual chunk_rerank=ON (query_count=1)
+INFO 05-05 06:11:39 [async_llm_engine.py:177] Finished request 20c34c8cf4f54bb09ed7343fdaf209f5.
+INFO 05-05 06:11:39 [async_llm_engine.py:177] Finished request c5ef58c078374fcf8b08fdb5bcaf1d60.
+[Model] [
+  {
+    "query": "điểm chuẩn ngành công nghệ thông tin uet 2024",
+    "priority": 1.0,
+    "info": "điểm chuẩn của ngành công nghệ thông tin năm 2024",
+    "school": "uet"
+  }
+]
+[Model] {'query': 'điểm chuẩn ngành công nghệ thông tin uet 2024', 'priority': 1.0, 'info': 'điểm chuẩn của ngành công nghệ thông tin năm 2024', 'school': 'uet'}
+[DocumentQualityGate] Extracted queries (1): ['điểm chuẩn ngành công nghệ thông tin uet 2024']
+[DocumentQualityGate] STEP 2/3 - Run web search
+[Retriever] Manual llm_rerank=OFF (query_count=1)
+[Retriever] Manual chunk_rerank=ON (query_count=1)
+[Model] [
+  {
+    "query": "học phí ngành công nghệ thông tin uet năm 2024",
+    "priority": 1.0,
+    "info": "thông tin học phí ngành công nghệ thông tin năm 2024",
+    "school": "uet"
+  }
+]
+[Model] {'query': 'học phí ngành công nghệ thông tin uet năm 2024', 'priority': 1.0, 'info': 'thông tin học phí ngành công nghệ thông tin năm 2024', 'school': 'uet'}
+[DocumentQualityGate] Extracted queries (1): ['học phí ngành công nghệ thông tin uet năm 2024']
+[DocumentQualityGate] STEP 2/3 - Run web search
+[Retriever] Manual llm_rerank=OFF (query_count=1)
+[Retriever] Manual chunk_rerank=ON (query_count=1)
+INFO 05-05 06:11:39 [async_llm_engine.py:177] Finished request 152e4e4d034d47f59450f9577fb6fca4.
+[Model] [
+  {
+    "query": "điểm chuẩn ngành công nghệ thông tin ptit 2024",
+    "priority": 1.0,
+    "info": "điểm chuẩn của ngành công nghệ thông tin năm 2024",
+    "school": "ptit"
+  }
+]
+[Model] {'query': 'điểm chuẩn ngành công nghệ thông tin ptit 2024', 'priority': 1.0, 'info': 'điểm chuẩn của ngành công nghệ thông tin năm 2024', 'school': 'ptit'}
+[DocumentQualityGate] Extracted queries (1): ['điểm chuẩn ngành công nghệ thông tin ptit 2024']
+[DocumentQualityGate] STEP 2/3 - Run web search
+[Retriever] Manual llm_rerank=OFF (query_count=1)
+[Retriever] Manual chunk_rerank=ON (query_count=1)
+[Retriever] Websearch: 0.29814s
+[Retriever] Rerank: Skip (llm_rerank=False)
+[Retriever] Snippet Check: 0.00020s
+[Retriever] [Download] Crawling 3 URLs (from 10 candidates)...
+[Page download] Chi tao 3 jobs (k_pages=3, total_urls=10)
+[Page download] Attempt to download 3 pages from 3 urls (PARALLEL, tối đa 3 request cùng lúc)
+[Retriever] Websearch: 0.01975s
+[Retriever] Rerank: Skip (llm_rerank=False)
+[Retriever] Snippet Check: 0.00049s
+[Retriever] [Download] Crawling 3 URLs (from 10 candidates)...
+[Page download] Chi tao 3 jobs (k_pages=3, total_urls=10)
+[Page download] Attempt to download 3 pages from 3 urls (PARALLEL, tối đa 3 request cùng lúc)
+[Retriever] Websearch: 0.37292s
+[Retriever] Rerank: Skip (llm_rerank=False)
+[Retriever] Snippet Check: 0.00013s
+[Retriever] [Download] Crawling 3 URLs (from 10 candidates)...
+[Page download] Chi tao 3 jobs (k_pages=3, total_urls=10)
+[Page download] Attempt to download 3 pages from 3 urls (PARALLEL, tối đa 3 request cùng lúc)
+[Retriever] Websearch: 0.01241s
+[Retriever] Rerank: Skip (llm_rerank=False)
+[Retriever] Snippet Check: 0.00012s
+[Retriever] [Download] Crawling 3 URLs (from 10 candidates)...
+[Page download] Chi tao 3 jobs (k_pages=3, total_urls=10)
+[Page download] Attempt to download 3 pages from 3 urls (PARALLEL, tối đa 3 request cùng lúc)
+[Page download] Error 429 via ScrapingBee: https://uet.vnu.edu.vn/dinh-muc-hoc-phi-dao-tao-dai-hoc-nam-... (không retry)
+[Page download] Error 429 via ScrapingBee: https://uet.vnu.edu.vn/thong-bao-tuyen-sinh-dao-tao-thac-si-... (không retry)
+[Page download] Tổng requests đã gửi: 4 (bao gồm cả cancelled)
+[Page download] Success: 0/3 pages
+[Page download] Credits: 22 (regular: 2, premium: 2x10)
+[Retriever] [Download] Snippet: 0, Crawled: 0 in 0.71s
+[Retriever] Process: 0.00002s
+[Retriever] RAG: 0.00001s
+[Retriever] [ChunkProcessor] 0 -> 0 chunks (queries=1)
+[DocumentQualityGate] Raw retrieve -> web_sources=0, rag_sources=0
+
+[DocumentQualityGate] STEP 3/3 - Validate and score web documents
+[DocumentQualityGate] Thresholds -> final_score>=0.58, relevance>=0.25, trust>=0.50, strict_mode=True
+[DocumentQualityGate] Result -> web_sources=0/0, rag_sources=0/0, max_docs_after_gate=3
+  ✓ SQ#2 DONE  web=0 rag=0 conf=0.00
+      Fact[2]: (none)
+[Page download] Bị chặn/rate limit (status 429), thử premium_proxy: https://tuyensinh.ptit.edu.vn/gioi-thieu/xem-diem-cac-nam-tr...
+[Page download] Error 429 via ScrapingBee: https://tuyensinh.ptit.edu.vn/gioi-thieu/xem-diem-cac-nam-tr... (không retry)
+[Page download] ✓ Thành công (premium): https://tuyensinh.uet.vnu.edu.vn/tin-tuyen-sinh/thong-bao-di...
+[Page download] ✓ Thành công (không premium): https://ptit.edu.vn/giaovu/thong-bao-quyet-dinh-ban-hanh-muc...
+[Page download] ✓ Thành công (không premium): https://ptit.edu.vn/giaovu/thong-bao-quyet-dinh-ban-hanh-muc...
+[Page download] ✓ Thành công (không premium): https://daotao.ptit.edu.vn/chuong-trinh-dao-tao/nganh-cong-n...
+[Page download] Tổng requests đã gửi: 12 (bao gồm cả cancelled)
+[Page download] Success: 3/3 pages
+[Page download] Credits: 57 (regular: 7, premium: 5x10)
+[Retriever] [Download] Snippet: 0, Crawled: 3 in 3.63s
+[Retriever] Process: 0.13376s
+Split Thông báo Quyết định ban hành mức thu học phí hệ đào tạo đại học ...: 451 chars -> 1 chunks
+Split Thông báo Quyết định Ban hành mức thu học phí năm học 2024 ...: 372 chars -> 1 chunks
+[ChunkRanker] Query: học phí ngành công nghệ thông tin ptit 2024...
+[ChunkRanker] Input chunks: 1
+Split Ngành Công nghệ thông tin Hệ CLC - PTIT – Đào tạo: 18940 chars -> 22 chunks
+[ChunkRanker] Query: học phí ngành công nghệ thông tin ptit 2024...
+[ChunkRanker] Input chunks: 1
+[ChunkRanker] Query: học phí ngành công nghệ thông tin ptit 2024...
+[ChunkRanker] Input chunks: 2
+[ChunkRanker] Max score: 0.2543, Threshold: 0.1271 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.2543 (KEEP) | ### Thông báo Quyết định Ban hành mức thu học phí năm học 20...
+[ChunkRanker] Output chunks: 1 (filtered 0)
+[ChunkRanker] Max score: 0.8344, Threshold: 0.4172 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.8344 (KEEP) | ### Thông báo Quyết định ban hành mức thu học phí hệ đào tạo...
+[ChunkRanker] Output chunks: 1 (filtered 0)
+[ChunkRanker] Max score: 0.2934, Threshold: 0.1467 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.2934 (KEEP) | Chương trình Công nghệ thông tin chất lượng cao (gồm có 3 ch...
+  [2] 0.0181 (DROP) | ### Đường dẫn liên kết  - Bộ Khoa học và Công nghệ - Học việ...
+[ChunkRanker] Output chunks: 1 (filtered 1)
+[Retriever] RAG: 0.74379s
+[Page download] ✓ Thành công (premium): https://uet.vnu.edu.vn/nhung-loi-khi-hoc-nganh-thong-thong-t...
+[Retriever] [ChunkProcessor] 3 -> 1 chunks (queries=1)
+[DocumentQualityGate] Raw retrieve -> web_sources=3, rag_sources=1
+
+[DocumentQualityGate] STEP 3/3 - Validate and score web documents
+[DocumentQualityGate] Thresholds -> final_score>=0.58, relevance>=0.25, trust>=0.50, strict_mode=True
+[DocumentQualityGate] [01] PASS | final=0.955 (rel=0.900, trust=1.000, fresh=1.000, rich=1.000, spam=0.000) | title=Thông báo Quyết định ban hành mức thu học phí hệ đào tạo đại học ... | url=https://ptit.edu.vn/giaovu/thong-bao-quyet-dinh-ban-hanh-muc-thu-hoc-phi-he-dao-tao-dai-hoc-chinh-quy-cu-nhan-nganh-cong-nghe-thong-tin-dinh-huong-ung-dung-nam-2024-2025
+[DocumentQualityGate] [02] PASS | final=0.955 (rel=0.900, trust=1.000, fresh=1.000, rich=1.000, spam=0.000) | title=Ngành Công nghệ thông tin Hệ CLC - PTIT – Đào tạo | url=https://daotao.ptit.edu.vn/chuong-trinh-dao-tao/nganh-cong-nghe-thong-tin-he-clc/
+[DocumentQualityGate] [03] PASS | final=0.910 (rel=0.800, trust=1.000, fresh=1.000, rich=1.000, spam=0.000) | title=Thông báo Quyết định Ban hành mức thu học phí năm học 2024 ... | url=https://ptit.edu.vn/giaovu/thong-bao-quyet-dinh-ban-hanh-muc-thu-hoc-phi-nam-hoc-2024-2025-cua-hoc-vien-cong-nghe-buu-chinh-vien-thong
+[DocumentQualityGate] Result -> web_sources=3/3, rag_sources=1/1, max_docs_after_gate=3
+[VLLM] fact_extractor | Instruction length: 306 | Prompt length: 1185 | kwargs: None
+INFO 05-05 06:11:43 [async_llm_engine.py:209] Added request f4fe93970ce944488a1fbf6ffa41d452.
+INFO 05-05 06:11:44 [metrics.py:386] Avg prompt throughput: 74.8 tokens/s, Avg generation throughput: 36.3 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 1.3%, CPU KV cache usage: 0.0%.
+[Page download] Error 500 via ScrapingBee: https://baolamdong.vn/diem-chuan-truong-uet-dai-hoc-cong-ngh... (không retry)
+[Page download] ✓ Thành công (không premium): https://vnexpress.net/diem-chuan-hoc-vien-cong-nghe-buu-chin...
+[Page download] ✓ Thành công (premium): https://baolamdong.vn/diem-chuan-truong-uet-dai-hoc-cong-ngh...
+[Page download] Tổng requests đã gửi: 10 (bao gồm cả cancelled)
+[Page download] Success: 3/3 pages
+[Page download] Credits: 64 (regular: 4, premium: 6x10)
+[Retriever] [Download] Snippet: 0, Crawled: 3 in 6.36s
+[Retriever] Process: 0.04924s
+Split Điểm chuẩn trường UET, Đại Học Công nghệ - Báo Lâm Đồng: 3151 chars -> 7 chunks
+Split Trường Đại học Công nghệ, ĐHQGHN - Thông tin tuyển sinh 2026: 1863 chars -> 3 chunks
+Split Những lợi thế khi học ngành Hệ thống thông tin tại UET: 6098 chars -> 5 chunks
+[Retriever] [Prioritize] Added 3 table chunks before retrieval output
+[ChunkRanker] Query: điểm chuẩn ngành công nghệ thông tin uet 2024...
+[ChunkRanker] Input chunks: 5
+[ChunkRanker] Query: điểm chuẩn ngành công nghệ thông tin uet 2024...
+[ChunkRanker] Input chunks: 2
+[ChunkRanker] Query: điểm chuẩn ngành công nghệ thông tin uet 2024...
+[ChunkRanker] Input chunks: 2
+[ChunkRanker] Max score: 0.9975, Threshold: 0.4987 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.9975 (KEEP) | #### Điểm chuẩn trường UET, Đại Học Công nghệ - ĐHQG Hà Nội ...
+  [2] 0.9902 (KEEP) | #### Điểm chuẩn trường UET, Đại Học Công nghệ - ĐHQG Hà Nội ...
+  [3] 0.7525 (KEEP) | #### Điểm chuẩn trường UET, Đại Học Công nghệ - ĐHQG Hà Nội ...
+  [4] 0.3592 (DROP) | | 15 | CN8 | Khoa học máy tính |  | 27.15 | CCQT SAT | | 16 ...
+  [5] 0.3151 (DROP) | [BANG] |STT|Mã ngành|Tên ngành|Tổ hợp môn|Điểm chuẩn|Ghi chú...
+[ChunkRanker] Output chunks: 3 (filtered 2)
+[ChunkRanker] Max score: 0.9870, Threshold: 0.4935 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.9870 (KEEP) | [BANG] |Mã tuyển sinh|Tên ngành|Điểm chuẩn THPT| |---|---|--...
+  [2] 0.9641 (KEEP) | ĐX = (Môn1 + Môn2 + Môn3) + Điểm ƯT (ĐT, KV) Riêng tổ hợp D0...
+[ChunkRanker] Output chunks: 2 (filtered 0)
+[ChunkRanker] Max score: 0.8486, Threshold: 0.4243 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.8486 (KEEP) | – Chuyên viên/chuyên gia khoa học dữ liệu và phân tích kinh ...
+  [2] 0.1820 (DROP) | Cuộc cách mạng công nghiệp 4.0 bùng nổ trên toàn cầu, cùng v...
+[ChunkRanker] Output chunks: 1 (filtered 1)
+[Retriever] RAG: 1.32014s
+[Retriever] [ChunkProcessor] 6 -> 1 chunks (queries=1)
+[DocumentQualityGate] Raw retrieve -> web_sources=3, rag_sources=1
+
+[DocumentQualityGate] STEP 3/3 - Validate and score web documents
+[DocumentQualityGate] Thresholds -> final_score>=0.58, relevance>=0.25, trust>=0.50, strict_mode=True
+[DocumentQualityGate] [01] PASS | final=1.000 (rel=1.000, trust=1.000, fresh=1.000, rich=1.000, spam=0.000) | title=Trường Đại học Công nghệ, ĐHQGHN - Thông tin tuyển sinh 2026 | url=https://tuyensinh.uet.vnu.edu.vn/tin-tuyen-sinh/thong-bao-diem-trung-tuyen-vao-truong-dai-hoc-cong-nghe-dhqghn-nam-2024-theo-phuong-thuc-thpt/
+[DocumentQualityGate] [02] PASS | final=0.900 (rel=1.000, trust=0.600, fresh=1.000, rich=1.000, spam=0.000) | title=Điểm chuẩn trường UET, Đại Học Công nghệ - Báo Lâm Đồng | url=https://baolamdong.vn/diem-chuan-truong-uet-dai-hoc-cong-nghe-dhqg-ha-noi-nam-2024-226769.html
+[DocumentQualityGate] [03] PASS | final=0.910 (rel=0.800, trust=1.000, fresh=1.000, rich=1.000, spam=0.000) | title=Những lợi thế khi học ngành Hệ thống thông tin tại UET | url=https://uet.vnu.edu.vn/nhung-loi-khi-hoc-nganh-thong-thong-tin-tai-uet-2/
+[DocumentQualityGate] Result -> web_sources=3/3, rag_sources=1/1, max_docs_after_gate=3
+[VLLM] fact_extractor | Instruction length: 306 | Prompt length: 1750 | kwargs: None
+INFO 05-05 06:11:47 [async_llm_engine.py:209] Added request 9f914e4a016e478795658f6e9a673b0e.
+[Page download] ✓ Thành công (không premium): https://xaydungchinhsach.chinhphu.vn/diem-chuan-hoc-vien-con...
+[Page download] Tổng requests đã gửi: 5 (bao gồm cả cancelled)
+[Page download] Success: 2/3 pages
+[Page download] Credits: 23 (regular: 3, premium: 2x10)
+[Retriever] [Download] Snippet: 0, Crawled: 2 in 9.28s
+[Retriever] Process: 0.05812s
+Split Điểm chuẩn Học viện Công nghệ Bưu chính viễn thông cao nhất 26,4: 1649 chars -> 2 chunks
+INFO 05-05 06:11:49 [metrics.py:386] Avg prompt throughput: 166.1 tokens/s, Avg generation throughput: 38.0 tokens/s, Running: 2 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 3.6%, CPU KV cache usage: 0.0%.
+Split ĐIỂM CHUẨN Học viện Công nghệ Bưu chính Viễn thông năm 2024: 10355 chars -> 18 chunks
+[ChunkRanker] Query: điểm chuẩn ngành công nghệ thông tin ptit 2024...
+[ChunkRanker] Input chunks: 2
+[Retriever] [Prioritize] Added 3 table chunks before retrieval output
+[ChunkRanker] Query: điểm chuẩn ngành công nghệ thông tin ptit 2024...
+[ChunkRanker] Input chunks: 6
+[ChunkRanker] Max score: 0.9982, Threshold: 0.4991 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.9982 (KEEP) | Theo công bố sáng 19/8 của trường, đây là tổng điểm ba môn t...
+  [2] 0.0062 (DROP) | Sinh viên PTIT trong một buổi tư vấn tuyển sinh ở Nam Định t...
+[ChunkRanker] Output chunks: 1 (filtered 1)
+[ChunkRanker] Max score: 0.9352, Threshold: 0.4676 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.9352 (KEEP) | | 11. | Công nghệ thông tin chất lượng cao | 7480201 _CLC | ...
+  [2] 0.6935 (KEEP) | | 11. | Truyền thông đa phương tiện | 7320104 | 25.94 | TTNV...
+  [3] 0.6841 (KEEP) | [BANG] |TT|Tên ngành, chương trình|Mã ngành, chương trình|Đi...
+  [4] 0.6776 (KEEP) | [BANG] |TT|Tên ngành , chương trình|Mã ngành , chương trình|...
+  [5] 0.6665 (KEEP) | ### ĐIỂM CHUẨN Học viện Công nghệ Bưu chính Viễn thông năm 2...
+[ChunkRanker] Output chunks: 5 (filtered 1)
+[Retriever] RAG: 1.31603s
+INFO 05-05 06:11:50 [async_llm_engine.py:177] Finished request 9f914e4a016e478795658f6e9a673b0e.
+  ✓ SQ#1 DONE  web=3 rag=1 conf=0.95
+      Fact[1]: điểm chuẩn ngành công nghệ thông tin UET năm 2024: 27,8
+[Retriever] [ChunkProcessor] 6 -> 1 chunks (queries=1)
+[DocumentQualityGate] Raw retrieve -> web_sources=2, rag_sources=1
+
+[DocumentQualityGate] STEP 3/3 - Validate and score web documents
+[DocumentQualityGate] Thresholds -> final_score>=0.58, relevance>=0.25, trust>=0.50, strict_mode=True
+[DocumentQualityGate] [01] PASS | final=0.855 (rel=0.900, trust=0.600, fresh=1.000, rich=1.000, spam=0.000) | title=ĐIỂM CHUẨN Học viện Công nghệ Bưu chính Viễn thông năm 2024 | url=https://xaydungchinhsach.chinhphu.vn/diem-chuan-hoc-vien-cong-nghe-buu-chinh-vien-thong-nam-2024-119240819123943606.htm
+[DocumentQualityGate] [02] PASS | final=0.855 (rel=0.900, trust=0.600, fresh=1.000, rich=1.000, spam=0.000) | title=Điểm chuẩn Học viện Công nghệ Bưu chính viễn thông cao nhất 26,4 | url=https://vnexpress.net/diem-chuan-hoc-vien-cong-nghe-buu-chinh-vien-thong-nam-2024-4781757.html
+[DocumentQualityGate] Result -> web_sources=2/2, rag_sources=1/1, max_docs_after_gate=3
+[VLLM] fact_extractor | Instruction length: 306 | Prompt length: 1765 | kwargs: None
+INFO 05-05 06:11:50 [async_llm_engine.py:209] Added request c6d6fe7ea7bd4d9c96dd53909e7904bc.
+INFO 05-05 06:11:52 [async_llm_engine.py:177] Finished request c6d6fe7ea7bd4d9c96dd53909e7904bc.
+  ✓ SQ#3 DONE  web=2 rag=1 conf=0.95
+      Fact[3]: điểm chuẩn ngành công nghệ thông tin PTIT năm 2024: điểm chuẩn trúng tuyển
+INFO 05-05 06:11:53 [async_llm_engine.py:177] Finished request f4fe93970ce944488a1fbf6ffa41d452.
+  ✓ SQ#4 DONE  web=3 rag=1 conf=0.95
+      Fact[4]: học phí ngành công nghệ thông tin PTIT năm 2024; học phí hệ đào tạo đại học chính quy cử nhân ngành Công nghệ thông tin (định hướng ứng dụng) năm 2024-2025
+[MultiHop] [Hop 2] running 1 sub-q in parallel
+  ▶ SQ#5 START [reasoning/comparison] deps=#1,#3
+      Q-raw: so sánh điểm chuẩn ngành công nghệ thông tin UET và PTIT
+      ── Reasoning INPUT (từ 2 dep) ──
+        • dep #1: fact=điểm chuẩn ngành công nghệ thông tin UET năm 2024: 27,8  | n_chunks=1
+        • dep #3: fact=điểm chuẩn ngành công nghệ thông tin PTIT năm 2024: điểm chuẩn trúng tuyển  | n_chunks=1
+[VLLM] reasoner | Instruction length: 366 | Prompt length: 3372 | kwargs: None
+INFO 05-05 06:11:53 [async_llm_engine.py:209] Added request 181087e9584f4ed98ec7cc7b8d7ce666.
+INFO 05-05 06:11:54 [metrics.py:386] Avg prompt throughput: 479.2 tokens/s, Avg generation throughput: 41.7 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 3.6%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:11:57 [async_llm_engine.py:177] Finished request 181087e9584f4ed98ec7cc7b8d7ce666.
+[MultiHop]   SQ#5 reasoner OK conf=0.95 answer_preview=Điểm chuẩn ngành Công nghệ thông tin của UET năm 2024 là 27,8; điểm chuẩn ngành Công nghệ thông tin của PTIT năm 2024 là
+      Q-rewritten: so sánh điểm chuẩn ngành công nghệ thông tin UET và PTIT (biết rằng: điểm chuẩn ngành công nghệ thông tin UET năm 2024: 27,8; điểm chuẩn ngành công nghệ thông …
+  ✓ SQ#5 DONE  web=0 rag=1 conf=0.95
+      Reasoner OUTPUT: Điểm chuẩn ngành Công nghệ thông tin của UET năm 2024 là 27,8; điểm chuẩn ngành Công nghệ thông tin của PTIT năm 2024 là 26,40
+[MultiHop] [Aggregate] web=8 rag=4 hops=2
+────────────────────────────────────────────────────────────────────────────────
+[DECOMPOSE result] 5 sub-question(s), sẽ chạy trong 2 hop(s)
+DAG plan:
+  • SQ#1 [local_db/numeric] deps=(root)
+      điểm chuẩn ngành công nghệ thông tin UET năm 2024
+  • SQ#2 [local_db/numeric] deps=(root)
+      học phí ngành công nghệ thông tin UET năm 2024
+  • SQ#3 [local_db/numeric] deps=(root)
+      điểm chuẩn ngành công nghệ thông tin PTIT năm 2024
+  • SQ#4 [local_db/numeric] deps=(root)
+      học phí ngành công nghệ thông tin PTIT năm 2024
+  • SQ#5 [reasoning/comparison] deps=#1→#3
+      so sánh điểm chuẩn ngành công nghệ thông tin UET và PTIT
+────────────────────────────────────────────────────────────────────────────────
+[Step 2/4] EXECUTE → chạy hops theo topological order (sub-q ready song song)
+            (chi tiết từng SQ được in real-time trong _execute_subq_logged)
+────────────────────────────────────────────────────────────────────────────────
+[Step 3/4] AGGREGATE → dedup theo (url, chunk_index): web=8 chunks, rag=4 chunks
+  ⤷ SQ#1: contributed web=3 rag=1 fact=yes
+  ⤷ SQ#2: contributed web=0 rag=0 fact=no
+  ⤷ SQ#3: contributed web=2 rag=1 fact=yes
+  ⤷ SQ#4: contributed web=3 rag=1 fact=yes
+  ⤷ SQ#5: contributed web=0 rag=1 fact=yes
+────────────────────────────────────────────────────────────────────────────────
+[Step 4/4] FORWARD → SufficiencyGate kiểm tra → Reader Qwen3-4B sinh câu trả lời
+════════════════════════════════════════════════════════════════════════════════ [MULTI-HOP] DONE
+
+[MULTI-HOP DONE] sub_q=5 | hops=2 | rag=4 | web=8
+[Sufficiency] sufficient=True score=0.628 reason=ok
+
+================================================================================
+[RAG CHUNKS] Total 4 chunks selected for reader:
+--------------------------------------------------------------------------------
+[Chunk 1] title=Trường Đại học Công nghệ, ĐHQGHN - Thông tin tuyển sinh 2026 | url=https://tuyensinh.uet.vnu.edu.vn/tin-tuyen-sinh/thong-bao-diem-trung-tuyen-vao-truong-dai-hoc-cong-nghe-dhqghn-nam-2024-theo-phuong-thuc-thpt/ | chunk_index=1
+Text preview:
+[BANG]
+|Mã tuyển sinh|Tên ngành|Điểm chuẩn THPT|
+|---|---|---|
+|CN1|Công nghệ thông tin|27,8|
+|CN10|Công nghệ nông nghiệp|22,50|
+|CN11|Kỹ thuật điều khiển và tự động hoá|27,05|
+|CN12|Trí tuệ nhân tạo|27,12|
+|CN13|Kỹ thuật năng lượng|24,59|
+|CN14|Hệ thống thông tin|26,87|
+|CN15|Mạng máy tính và truyền thông dữ liệu|26,92|
+|CN17|Kỹ thuật Robot|25,99|
+|CN18|Thiết kế công nghiệp và đồ họa|24,64|
+|CN2|
+--------------------------------------------------------------------------------
+[Chunk 2] title=ĐIỂM CHUẨN Học viện Công nghệ Bưu chính Viễn thông năm 2024 | url=https://xaydungchinhsach.chinhphu.vn/diem-chuan-hoc-vien-cong-nghe-buu-chinh-vien-thong-nam-2024-119240819123943606.htm | chunk_index=4
+Text preview:
+[BANG]
+|TT|Tên ngành, chương trình|Mã ngành, chương trình|Điểm chuẩn trúng tuyển|Thứ tự nguyện vọng (TTNV) trúng tuyển khi thí sinh có điểm xét tuyển bằng mức điểm trúng tuyển (*)|
+|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
+| 1. | Kỹ thuật Điện tử viễn thông | 7520207 | 25.75 | TTNV= 1 |
+| 2. | Công nghệ Kỹ thuật Điện, điện tử | 7510301 | 25.46 | TTNV<=2 |
+| 3. | Kỹ thuật Điều khiển và 
+--------------------------------------------------------------------------------
+[Chunk 3] title=Thông báo Quyết định ban hành mức thu học phí hệ đào tạo đại học ... | url=https://ptit.edu.vn/giaovu/thong-bao-quyet-dinh-ban-hanh-muc-thu-hoc-phi-he-dao-tao-dai-hoc-chinh-quy-cu-nhan-nganh-cong-nghe-thong-tin-dinh-huong-ung-dung-nam-2024-2025 | chunk_index=0
+Text preview:
+### Thông báo Quyết định ban hành mức thu học phí hệ đào tạo đại học chính quy cử nhân ngành Công nghệ thông tin (định hướng ứng dụng) năm 2024-2025
+
+- Giáo vụ
+- 04/07/2024
+- thutrang
+Ngày 03/7/2024, Học viện Công nghệ Bưu chính Viễn thông ban hành Quyết đinh số 1112/QĐ-HV về mức thu học phí hệ đào tạo đại học chính quy cử nhân ngành Công nghệ thông tin (định hướng ứng dụng) năm 2024-2025.
+Xem chi
+--------------------------------------------------------------------------------
+[Chunk 4] title=Bước suy luận #5 | url=multihop://reasoning/sq_5 | chunk_index=0
+Text preview:
+[Kết quả bước suy luận: so sánh điểm chuẩn ngành công nghệ thông tin UET và PTIT]
+Đáp án: Điểm chuẩn ngành Công nghệ thông tin của UET năm 2024 là 27,8; điểm chuẩn ngành Công nghệ thông tin của PTIT năm 2024 là 26,40
+Bằng chứng đầu vào:
+- Từ sub-question #1: điểm chuẩn ngành công nghệ thông tin UET năm 2024: 27,8
+- Từ sub-question #3: điểm chuẩn ngành công nghệ thông tin PTIT năm 2024: điểm chuẩn 
+================================================================================
+
+================================================================================
+[RAG CONTEXT] Formatted chunks sent to reader:
+--------------------------------------------------------------------------------
+[1] Trường Đại học Công nghệ, ĐHQGHN - Thông tin tuyển sinh 2026
+
+URL: https://tuyensinh.uet.vnu.edu.vn/tin-tuyen-sinh/thong-bao-diem-trung-tuyen-vao-truong-dai-hoc-cong-nghe-dhqghn-nam-2024-theo-phuong-thuc-thpt/
+
+[BANG]
+|Mã tuyển sinh|Tên ngành|Điểm chuẩn THPT|
+|---|---|---|
+|CN1|Công nghệ thông tin|27,8|
+|CN10|Công nghệ nông nghiệp|22,50|
+|CN11|Kỹ thuật điều khiển và tự động hoá|27,05|
+|CN12|Trí tuệ nhân tạo|27,12|
+|CN13|Kỹ thuật năng lượng|24,59|
+|CN14|Hệ thống thông tin|26,87|
+|CN15|Mạng máy tính và truyền thông dữ liệu|26,92|
+|CN17|Kỹ thuật Robot|25,99|
+|CN18|Thiết kế công nghiệp và đồ họa|24,64|
+|CN2|Kỹ thuật máy tính|26,97|
+|CN3|Vật lý kỹ thuật|25,24|
+|CN4|Cơ kỹ thuật|26,03|
+|CN5|Công nghệ kỹ thuật xây dựng|23,91|
+|CN6|Công nghệ kỹ thuật cơ – điện tử|26,27|
+|CN7|Công nghệ hàng không vũ trụ|24,61|
+|CN8|Khoa học máy tính|27,58|
+|CN9|Công nghệ kỹ thuật điện tử – viễn thông|26,3|  
+- Thí sinh tra cứu kết quả trúng tuyển:
+– Từ 21h00 ngày 17/08/2024 tại : https://tuyensinh.uet.vnu.edu.vn/category/tra-cuu/ket-qua-tuyen-sinh/
+- Cách tính điểm xét tuyển (gọi tắt là ĐX) theo kết quả thi tốt nghiệp THPT năm 2024 như sau:
+ĐX = (Môn1 + Môn2 + Môn3) + Điểm ƯT (ĐT, KV)
+Riêng tổ hợp D01 điểm xét tuyển được tính như sau :
+
+---
+
+[2] ĐIỂM CHUẨN Học viện Công nghệ Bưu chính Viễn thông năm 2024
+
+URL: https://xaydungchinhsach.chinhphu.vn/diem-chuan-hoc-vien-cong-nghe-buu-chinh-vien-thong-nam-2024-119240819123943606.htm
+
+[BANG]
+|TT|Tên ngành, chương trình|Mã ngành, chương trình|Điểm chuẩn trúng tuyển|Thứ tự nguyện vọng (TTNV) trúng tuyển khi thí sinh có điểm xét tuyển bằng mức điểm trúng tuyển (*)|
+|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
+| 1. | Kỹ thuật Điện tử viễn thông | 7520207 | 25.75 | TTNV= 1 |
+| 2. | Công nghệ Kỹ thuật Điện, điện tử | 7510301 | 25.46 | TTNV<=2 |
+| 3. | Kỹ thuật Điều khiển và tự động hóa | 7520216 | 26.08 | TTNV<=3 |
+| 4. | Công nghệ thông tin | 7480201 | 26.40 | TTNV<=5 |
+| 5. | An toàn thông tin | 7480202 | 25.85 | TTNV<=2 |
+| 6. | Khoa học máy tính (định hướng Khoa học dữ liệu) | 7480101 | 26.31 | TTNV=1 |
+| 7. | Kỹ thuật dữ liệu (ngành Mạng máy tính và truyền thông dữ liệu) | 7480102 | 25.59 | TTNV<=11 |
+| 8. | Công nghệ thông tin Việt – Nhật | 7480201_VNH | 24.25 | TTNV=1 |
+| 9. | Công nghệ thông tin (Cử nhân định hướng ứng dụng) | 7480201 _UDU | 24.87 | TTNV<=4 |
+| 10. | Công nghệ đa phương tiện | 7329001 | 25.75 | TTNV<=2 |
+| 11. | Truyền thông đa phương tiện | 7320104 | 25.94 | TTNV<=6 |
+
+---
+
+[3] Thông báo Quyết định ban hành mức thu học phí hệ đào tạo đại
+
+URL: https://ptit.edu.vn/giaovu/thong-bao-quyet-dinh-ban-hanh-muc-thu-hoc-phi-he-dao-tao-dai-hoc-chinh-quy-cu-nhan-nganh-cong-nghe-thong-tin-dinh-huong-ung-dung-nam-2024-2025
+
+### Thông báo Quyết định ban hành mức thu học phí hệ đào tạo đại học chính quy cử nhân ngành Công nghệ thông tin (định hướng ứng dụng) năm 2024-2025
+
+- Giáo vụ
+- 04/07/2024
+- thutrang
+Ngày 03/7/2024, Học viện Công nghệ Bưu chính Viễn thông ban hành Quyết đinh số 1112/QĐ-HV về mức thu học phí hệ đào tạo đại học chính quy cử nhân ngành Công nghệ thông tin (định hướng ứng dụng) năm 2024-2025.
+Xem chi tiết tại: QD 1112 muc thu hoc phi CNTT UDU
+- Chia sẻ:
+
+---
+
+[4] Bước suy luận #5
+
+URL: multihop://reasoning/sq_5
+
+[Kết quả bước suy luận: so sánh điểm chuẩn ngành công nghệ thông tin UET và PTIT]
+Đáp án: Điểm chuẩn ngành Công nghệ thông tin của UET năm 2024 là 27,8; điểm chuẩn ngành Công nghệ thông tin của PTIT năm 2024 là 26,40
+Bằng chứng đầu vào:
+- Từ sub-question #1: điểm chuẩn ngành công nghệ thông tin UET năm 2024: 27,8
+- Từ sub-question #3: điểm chuẩn ngành công nghệ thông tin PTIT năm 2024: điểm chuẩn trúng tuyển
+
+---
+================================================================================
+[FINAL PROMPT] Qwen4B input:
+--------------------------------------------------------------------------------
+Hiện tại là năm 2025, sử dụng thông tin mới nhất có thể. 
+Nếu không tìm thấy đủ dữ liệu đáng tin để xây dựng đầy đủ theo form, chỉ trả lời: "Tôi không tìm thấy thông tin phù hợp.".
+Thông tin tham khảo:
+[1] Trường Đại học Công nghệ, ĐHQGHN - Thông tin tuyển sinh 2026
+
+URL: https://tuyensinh.uet.vnu.edu.vn/tin-tuyen-sinh/thong-bao-diem-trung-tuyen-vao-truong-dai-hoc-cong-nghe-dhqghn-nam-2024-theo-phuong-thuc-thpt/
+
+[BANG]
+|Mã tuyển sinh|Tên ngành|Điểm chuẩn THPT|
+|---|---|---|
+|CN1|Công nghệ thông tin|27,8|
+|CN10|Công nghệ nông nghiệp|22,50|
+|CN11|Kỹ thuật điều khiển và tự động hoá|27,05|
+|CN12|Trí tuệ nhân tạo|27,12|
+|CN13|Kỹ thuật năng lượng|24,59|
+|CN14|Hệ thống thông tin|26,87|
+|CN15|Mạng máy tính và truyền thông dữ liệu|26,92|
+|CN17|Kỹ thuật Robot|25,99|
+|CN18|Thiết kế công nghiệp và đồ họa|24,64|
+|CN2|Kỹ thuật máy tính|26,97|
+|CN3|Vật lý kỹ thuật|25,24|
+|CN4|Cơ kỹ thuật|26,03|
+|CN5|Công nghệ kỹ thuật xây dựng|23,91|
+|CN6|Công nghệ kỹ thuật cơ – điện tử|26,27|
+|CN7|Công nghệ hàng không vũ trụ|24,61|
+|CN8|Khoa học máy tính|27,58|
+|CN9|Công nghệ kỹ thuật điện tử – viễn thông|26,3|  
+- Thí sinh tra cứu kết quả trúng tuyển:
+– Từ 21h00 ngày 17/08/2024 tại : https://tuyensinh.uet.vnu.edu.vn/category/tra-cuu/ket-qua-tuyen-sinh/
+- Cách tính điểm xét tuyển (gọi tắt là ĐX) theo kết quả thi tốt nghiệp THPT năm 2024 như sau:
+ĐX = (Môn1 + Môn2 + Môn3) + Điểm ƯT (ĐT, KV)
+Riêng tổ hợp D01 điểm xét tuyển được tính như sau :
+
+---
+
+[2] ĐIỂM CHUẨN Học viện Công nghệ Bưu chính Viễn thông năm 2024
+
+URL: https://xaydungchinhsach.chinhphu.vn/diem-chuan-hoc-vien-cong-nghe-buu-chinh-vien-thong-nam-2024-119240819123943606.htm
+
+[BANG]
+|TT|Tên ngành, chương trình|Mã ngành, chương trình|Điểm chuẩn trúng tuyển|Thứ tự nguyện vọng (TTNV) trúng tuyển khi thí sinh có điểm xét tuyển bằng mức điểm trúng tuyển (*)|
+|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
+| 1. | Kỹ thuật Điện tử viễn thông | 7520207 | 25.75 | TTNV= 1 |
+| 2. | Công nghệ Kỹ thuật Điện, điện tử | 7510301 | 25.46 | TTNV<=2 |
+| 3. | Kỹ thuật Điều khiển và tự động hóa | 7520216 | 26.08 | TTNV<=3 |
+| 4. | Công nghệ thông tin | 7480201 | 26.40 | TTNV<=5 |
+| 5. | An toàn thông tin | 7480202 | 25.85 | TTNV<=2 |
+| 6. | Khoa học máy tính (định hướng Khoa học dữ liệu) | 7480101 | 26.31 | TTNV=1 |
+| 7. | Kỹ thuật dữ liệu (ngành Mạng máy tính và truyền thông dữ liệu) | 7480102 | 25.59 | TTNV<=11 |
+| 8. | Công nghệ thông tin Việt – Nhật | 7480201_VNH | 24.25 | TTNV=1 |
+| 9. | Công nghệ thông tin (Cử nhân định hướng ứng dụng) | 7480201 _UDU | 24.87 | TTNV<=4 |
+| 10. | Công nghệ đa phương tiện | 7329001 | 25.75 | TTNV<=2 |
+| 11. | Truyền thông đa phương tiện | 7320104 | 25.94 | TTNV<=6 |
+
+---
+
+[3] Thông báo Quyết định ban hành mức thu học phí hệ đào tạo đại
+
+URL: https://ptit.edu.vn/giaovu/thong-bao-quyet-dinh-ban-hanh-muc-thu-hoc-phi-he-dao-tao-dai-hoc-chinh-quy-cu-nhan-nganh-cong-nghe-thong-tin-dinh-huong-ung-dung-nam-2024-2025
+
+### Thông báo Quyết định ban hành mức thu học phí hệ đào tạo đại học chính quy cử nhân ngành Công nghệ thông tin (định hướng ứng dụng) năm 2024-2025
+
+- Giáo vụ
+- 04/07/2024
+- thutrang
+Ngày 03/7/2024, Học viện Công nghệ Bưu chính Viễn thông ban hành Quyết đinh số 1112/QĐ-HV về mức thu học phí hệ đào tạo đại học chính quy cử nhân ngành Công nghệ thông tin (định hướng ứng dụng) năm 2024-2025.
+Xem chi tiết tại: QD 1112 muc thu hoc phi CNTT UDU
+- Chia sẻ:
+
+---
+
+[4] Bước suy luận #5
+
+URL: multihop://reasoning/sq_5
+
+[Kết quả bước suy luận: so sánh điểm chuẩn ngành công nghệ thông tin UET và PTIT]
+Đáp án: Điểm chuẩn ngành Công nghệ thông tin của UET năm 2024 là 27,8; điểm chuẩn ngành Công nghệ thông tin của PTIT năm 2024 là 26,40
+Bằng chứng đầu vào:
+- Từ sub-question #1: điểm chuẩn ngành công nghệ thông tin UET năm 2024: 27,8
+- Từ sub-question #3: điểm chuẩn ngành công nghệ thông tin PTIT năm 2024: điểm chuẩn trúng tuyển
+
+---
+Câu hỏi:
+So sánh điểm chuẩn và học phí ngành công nghệ thông tin của UET và PTIT
+================================================================================
+
+INFO:     14.248.59.214:0 - "POST /pre_inference HTTP/1.1" 200 OK
+INFO:     14.248.59.214:0 - "POST /inference/87e79b9f-efac-4113-94fc-447e51fe1358 HTTP/1.1" 200 OK
+[VLLM] CallType.READER | Instruction length: 362 | Prompt length: 3924 | kwargs: None
+[VLLm] Using Qwen Reader Lora
+INFO 05-05 06:12:01 [async_llm_engine.py:209] Added request 294d89cd59724cfbb2e9cbb6551aa371.
+INFO 05-05 06:12:02 [metrics.py:386] Avg prompt throughput: 210.7 tokens/s, Avg generation throughput: 16.3 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 4.0%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:12:07 [metrics.py:386] Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 32.4 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 4.4%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:12:12 [metrics.py:386] Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 32.6 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 4.7%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:12:12 [async_llm_engine.py:177] Finished request 294d89cd59724cfbb2e9cbb6551aa371.
+{'model_id': 'Qwen/Qwen3-4B$$$1', 'use_websearch': True, 'use_localdb': False, 'auto_source': False, 'max_query': 3, 'query_score_threshold': 0.5, 'engine_type': 'google', 'domain_restrict': False, 'school_domain': False, 'llm_rerank': False, 'page_score_threshold': 0.5, 'chunk_score_threshold': 0.5, 'k_docs': 5, 'k_pages': 3, 'page_rerank': False, 'chunk_rerank': True, 'include_pdf': False, 'include_image': False, 'merge_table': False, 'merge_neighbor': False, 'max_tokens': 2048, 'temperature': 0.5, 'top_p': 0.9, 'top_k': 40, 'max_history': 8, 'enable_quality_gate': True, 'quality_log': True, 'quality_min_score': 0.58, 'quality_min_relevance': 0.25, 'quality_min_trust': 0.5, 'quality_strict_mode': True, 'quality_max_docs': 3}
+[DocumentQualityGate] enable_quality_gate=True | quality_log=True | min_score=0.58 | min_relevance=0.25 | min_trust=0.5 | strict_mode=True | quality_max_docs=3
+
+════════════════════════════════════════════════════════════════════════════════
+║ [MULTI-HOP] PIPELINE START
+║ Question: Danh sách các trường đào ngành CNTT với điểm chuẩn trên 25 điểm và học phí dưới 50 triệu/năm
+║ Config: max_hops=3, max_sub_q=5, subq_max_query=1, fact_extract=True
+════════════════════════════════════════════════════════════════════════════════
+[Step 1/4] DECOMPOSE → LLM phân rã câu hỏi thành DAG sub-questions
+[VLLM] decomposer | Instruction length: 4141 | Prompt length: 101 | kwargs: None
+INFO 05-05 06:12:52 [async_llm_engine.py:209] Added request f2141d814d2b4529bcede7d8eecf9c8c.
+INFO 05-05 06:12:53 [metrics.py:386] Avg prompt throughput: 36.4 tokens/s, Avg generation throughput: 0.1 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 3.4%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:12:58 [metrics.py:386] Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 40.2 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 3.8%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:13:01 [async_llm_engine.py:177] Finished request f2141d814d2b4529bcede7d8eecf9c8c.
+[Decomposer raw] ```json
+{
+  "sub_questions": [
+    {"id": 1, "text": "danh sách các trường đào tạo ngành CNTT năm 2024", "depends_on": [], "resolver": "web", "evidence_type": "list"},
+    {"id": 2, "text": "điểm chuẩn ngành CNTT của các trường năm 2024", "depends_on": [1], "resolver": "local_db", "evidence_type": "numeric"},
+    {"id": 3, "text": "học phí ngành CNTT của các trường năm 2024", "depends_on": [1], "r...
+[MultiHop] [Decompose] 5 sub-questions
+[MultiHop]   SQ#1 [web/list] deps=[] | danh sách các trường đào tạo ngành CNTT năm 2024
+[MultiHop]   SQ#2 [local_db/numeric] deps=[1] | điểm chuẩn ngành CNTT của các trường năm 2024
+[MultiHop]   SQ#3 [local_db/numeric] deps=[1] | học phí ngành CNTT của các trường năm 2024
+[MultiHop]   SQ#4 [reasoning/computation] deps=[2] | lọc các trường có điểm chuẩn > 25
+[MultiHop]   SQ#5 [reasoning/computation] deps=[3] | lọc các trường có học phí < 50 triệu/năm
+[MultiHop] [Hop 1] running 1 sub-q in parallel
+  ▶ SQ#1 START [web/list] deps=—
+      Q-raw: danh sách các trường đào tạo ngành CNTT năm 2024
+[MultiHop]   SQ#1 auto_source=OFF → forced localdb=False websearch=True (resolver=web bị bỏ qua)
+[VLLM] CallType.KEYWORDS | Instruction length: 338 | Prompt length: 85 | kwargs: None
+INFO 05-05 06:13:01 [async_llm_engine.py:209] Added request 1cc364d2f9d6472298f400fecb6a84e5.
+INFO 05-05 06:13:01 [async_llm_engine.py:177] Finished request 1cc364d2f9d6472298f400fecb6a84e5.
+[RouterRetriever][TIME LLM] year_start=2024 year_end=2024 metric=y
+
+[DocumentQualityGate] STEP 1/3 - Send query to keyword extractor
+[DocumentQualityGate] Question: danh sách các trường đào tạo ngành CNTT năm 2024
+[VLLM] CallType.KEYWORDS | Instruction length: 168 | Prompt length: 8656 | kwargs: None
+INFO 05-05 06:13:01 [async_llm_engine.py:209] Added request cfcb63ab4e254c4eae0bcc295d3b9ac5.
+INFO 05-05 06:13:03 [metrics.py:386] Avg prompt throughput: 622.8 tokens/s, Avg generation throughput: 32.2 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 6.7%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:13:04 [async_llm_engine.py:177] Finished request cfcb63ab4e254c4eae0bcc295d3b9ac5.
+[Model] [
+  {
+    "query": "danh sách các trường đào tạo ngành công nghệ thông tin 2024",
+    "priority": 1.0,
+    "info": "thông tin các trường đào tạo ngành công nghệ thông tin",
+    "school": ""
+  }
+]
+[Model] {'query': 'danh sách các trường đào tạo ngành công nghệ thông tin 2024', 'priority': 1.0, 'info': 'thông tin các trường đào tạo ngành công nghệ thông tin', 'school': ''}
+[DocumentQualityGate] Extracted queries (1): ['danh sách các trường đào tạo ngành công nghệ thông tin 2024']
+[DocumentQualityGate] STEP 2/3 - Run web search
+[Retriever] Manual llm_rerank=OFF (query_count=1)
+[Retriever] Manual chunk_rerank=ON (query_count=1)
+[Retriever] Websearch: 0.33716s
+[Retriever] Rerank: Skip (llm_rerank=False)
+[Retriever] Snippet Check: 0.00014s
+[Retriever] [Download] Crawling 3 URLs (from 10 candidates)...
+[Page download] Chi tao 3 jobs (k_pages=3, total_urls=10)
+[Page download] Attempt to download 3 pages from 3 urls (PARALLEL, tối đa 3 request cùng lúc)
+[Page download] Cache hit: https://daotao.ute.udn.vn/curriculums.asp...
+[Page download] Cache hit: https://daa.uit.edu.vn/thong-bao-danh-sach-sinh-vien-du-kien...
+[Page download] Task 0 error: 
+[Page download] Tổng requests đã gửi: 1 (bao gồm cả cancelled)
+[Page download] Success: 2/3 pages
+[Page download] Credits: 1 (regular: 1, premium: 0x10)
+[Retriever] [Download] Snippet: 0, Crawled: 2 in 15.82s
+[Retriever] Process: 0.05651s
+Split Thông báo Danh sách sinh viên dự kiến TN đợt 4 năm 2024 - UIT: 454 chars -> 1 chunks
+[ChunkRanker] Query: danh sách các trường đào tạo ngành công nghệ thông tin 2024...
+[ChunkRanker] Input chunks: 1
+[ChunkRanker] Max score: 0.0484, Threshold: 0.0242 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.0484 (KEEP) | T5, 07/11/2024 - 08:35 Chào các bạn sinh viên! Phòng Đào tạo...
+[ChunkRanker] Output chunks: 1 (filtered 0)
+Split Chương trình Đào tạo - Trường Đại học Sư phạm Kỹ thuật: 14402 chars -> 19 chunks
+[Retriever] [Prioritize] Added 3 table chunks before retrieval output
+[ChunkRanker] Query: danh sách các trường đào tạo ngành công nghệ thông tin 2024...
+[ChunkRanker] Input chunks: 6
+[ChunkRanker] Max score: 0.4080, Threshold: 0.2040 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.4080 (KEEP) | thuật Điện - Điện tử (Cử nhân) Chuyên ngành Kỹ thuật Điện tử...
+  [2] 0.2924 (KEEP) | thuật Môi trường (Cử nhân) Ngành Công nghệ Kỹ thuật Môi trườ...
+  [3] 0.1463 (DROP) | nghệ Kỹ thuật Cơ khí Chế tạo Ngành Công nghệ Kỹ thuật Ô tô N...
+  [4] 0.0269 (DROP) | ### Tân Sinh viên 2024  - Danh sách lớp sinh hoạt...
+  [5] 0.0092 (DROP) | | Tham gia khảo sát CTĐT dành cho giảng viên và nhà tuyển dụ...
+[ChunkRanker] Output chunks: 2 (filtered 4)
+[Retriever] RAG: 1.01929s
+[Retriever] [ChunkProcessor] 3 -> 1 chunks (queries=1)
+[DocumentQualityGate] Raw retrieve -> web_sources=2, rag_sources=1
+
+[DocumentQualityGate] STEP 3/3 - Validate and score web documents
+[DocumentQualityGate] Thresholds -> final_score>=0.58, relevance>=0.25, trust>=0.50, strict_mode=True
+[DocumentQualityGate] [01] PASS | final=0.720 (rel=0.600, trust=0.600, fresh=1.000, rich=1.000, spam=0.000) | title=Chương trình Đào tạo - Trường Đại học Sư phạm Kỹ thuật | url=https://daotao.ute.udn.vn/curriculums.asp
+[DocumentQualityGate] [02] PASS | final=0.865 (rel=0.700, trust=1.000, fresh=1.000, rich=1.000, spam=0.000) | title=Thông báo Danh sách sinh viên dự kiến TN đợt 4 năm 2024 - UIT | url=https://daa.uit.edu.vn/thong-bao-danh-sach-sinh-vien-du-kien-tn-dot-4-nam-2024
+[DocumentQualityGate] Result -> web_sources=2/2, rag_sources=1/1, max_docs_after_gate=3
+[VLLM] fact_extractor | Instruction length: 306 | Prompt length: 1932 | kwargs: None
+INFO 05-05 06:13:21 [async_llm_engine.py:209] Added request fc499936f817470e9a37d1260cdc9110.
+INFO 05-05 06:13:21 [metrics.py:386] Avg prompt throughput: 40.2 tokens/s, Avg generation throughput: 2.1 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 1.7%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:13:24 [async_llm_engine.py:177] Finished request fc499936f817470e9a37d1260cdc9110.
+  ✓ SQ#1 DONE  web=2 rag=1 conf=0.95
+      Fact[1]: Ngành Công nghệ Thông tin (Cử nhân); Ngành Công nghệ Thông tin (Kỹ sư)
+[MultiHop] [Hop 2] running 2 sub-q in parallel
+  ▶ SQ#2 START [local_db/numeric] deps=#1
+      Q-raw: điểm chuẩn ngành CNTT của các trường năm 2024
+[MultiHop]   SQ#2 auto_source=OFF → forced localdb=False websearch=True (resolver=local_db bị bỏ qua)
+[VLLM] CallType.KEYWORDS | Instruction length: 338 | Prompt length: 82 | kwargs: None
+INFO 05-05 06:13:24 [async_llm_engine.py:209] Added request a80108ae65044587963bc6857b0e8ae8.
+  ▶ SQ#3 START [local_db/numeric] deps=#1
+      Q-raw: học phí ngành CNTT của các trường năm 2024
+[MultiHop]   SQ#3 auto_source=OFF → forced localdb=False websearch=True (resolver=local_db bị bỏ qua)
+[VLLM] CallType.KEYWORDS | Instruction length: 338 | Prompt length: 79 | kwargs: None
+INFO 05-05 06:13:24 [async_llm_engine.py:209] Added request 94adfaaa4ea04f87a587a85f06e0f022.
+INFO 05-05 06:13:25 [async_llm_engine.py:177] Finished request a80108ae65044587963bc6857b0e8ae8.
+INFO 05-05 06:13:25 [async_llm_engine.py:177] Finished request 94adfaaa4ea04f87a587a85f06e0f022.
+[RouterRetriever][TIME LLM] year_start=2024 year_end=2024 metric=y
+
+[DocumentQualityGate] STEP 1/3 - Send query to keyword extractor
+[DocumentQualityGate] Question: điểm chuẩn ngành CNTT của các trường năm 2024
+[VLLM] CallType.KEYWORDS | Instruction length: 168 | Prompt length: 8653 | kwargs: None
+INFO 05-05 06:13:25 [async_llm_engine.py:209] Added request 41360f10c2694eebba9cbf28d6191fe5.
+[RouterRetriever][TIME LLM] year_start=2024 year_end=2024 metric=y
+
+[DocumentQualityGate] STEP 1/3 - Send query to keyword extractor
+[DocumentQualityGate] Question: học phí ngành CNTT của các trường năm 2024
+[VLLM] CallType.KEYWORDS | Instruction length: 168 | Prompt length: 8650 | kwargs: None
+INFO 05-05 06:13:25 [async_llm_engine.py:209] Added request f7c7b479bd7f4a3eb223d447c30b66f2.
+INFO 05-05 06:13:27 [metrics.py:386] Avg prompt throughput: 1202.0 tokens/s, Avg generation throughput: 30.3 tokens/s, Running: 2 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 13.4%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:13:29 [async_llm_engine.py:177] Finished request f7c7b479bd7f4a3eb223d447c30b66f2.
+[Model] [
+  {
+    "query": "học phí ngành công nghệ thông tin các trường năm 2024",
+    "priority": 1.0,
+    "info": "học phí ngành công nghệ thông tin của các trường năm 2024",
+    "school": ""
+  }
+]
+[Model] {'query': 'học phí ngành công nghệ thông tin các trường năm 2024', 'priority': 1.0, 'info': 'học phí ngành công nghệ thông tin của các trường năm 2024', 'school': ''}
+[DocumentQualityGate] Extracted queries (1): ['học phí ngành công nghệ thông tin các trường năm 2024']
+[DocumentQualityGate] STEP 2/3 - Run web search
+[Retriever] Manual llm_rerank=OFF (query_count=1)
+[Retriever] Manual chunk_rerank=ON (query_count=1)
+INFO 05-05 06:13:29 [async_llm_engine.py:177] Finished request 41360f10c2694eebba9cbf28d6191fe5.
+[Model] [
+  {
+    "query": "điểm chuẩn ngành công nghệ thông tin các trường năm 2024",
+    "priority": 1.0,
+    "info": "điểm chuẩn ngành công nghệ thông tin của các trường năm 2024",
+    "school": ""
+  }
+]
+[Model] {'query': 'điểm chuẩn ngành công nghệ thông tin các trường năm 2024', 'priority': 1.0, 'info': 'điểm chuẩn ngành công nghệ thông tin của các trường năm 2024', 'school': ''}
+[DocumentQualityGate] Extracted queries (1): ['điểm chuẩn ngành công nghệ thông tin các trường năm 2024']
+[DocumentQualityGate] STEP 2/3 - Run web search
+[Retriever] Manual llm_rerank=OFF (query_count=1)
+[Retriever] Manual chunk_rerank=ON (query_count=1)
+[Retriever] Websearch: 0.30302s
+[Retriever] Rerank: Skip (llm_rerank=False)
+[Retriever] Snippet Check: 0.00030s
+[Retriever] [Download] Crawling 3 URLs (from 10 candidates)...
+[Page download] Chi tao 3 jobs (k_pages=3, total_urls=10)
+[Page download] Attempt to download 3 pages from 3 urls (PARALLEL, tối đa 3 request cùng lúc)
+[Page download] Cache hit: https://thitruongtaichinhtiente.vn/hoc-phi-nganh-cong-nghe-t...
+[Page download] Cache hit: https://laodong.vn/giao-duc/hoc-phi-nganh-cong-nghe-thong-ti...
+[Page download] Cache hit: https://thuvienphapluat.vn/hoi-dap-phap-luat/hoc-phi-nganh-c...
+[Page download] Tổng requests đã gửi: 0 (bao gồm cả cancelled)
+[Page download] Success: 3/3 pages
+[Page download] Credits: 0 (regular: 0, premium: 0x10)
+[Retriever] [Download] Snippet: 0, Crawled: 3 in 0.00s
+[Retriever] Process: 0.04922s
+[Retriever] Websearch: 0.00399s
+[Retriever] Rerank: Skip (llm_rerank=False)
+[Retriever] Snippet Check: 0.00020s
+[Retriever] [Download] Crawling 3 URLs (from 10 candidates)...
+[Page download] Chi tao 3 jobs (k_pages=3, total_urls=10)
+[Page download] Attempt to download 3 pages from 3 urls (PARALLEL, tối đa 3 request cùng lúc)
+[Page download] Cache hit: https://xaydungchinhsach.chinhphu.vn/diem-chuan-truong-dai-h...
+[Page download] Cache hit: https://laodong.vn/giao-duc/diem-chuan-2024-nganh-cong-nghe-...
+[Page download] Cache hit: https://daibieunhandan.vn/diem-chuan-nganh-cong-nghe-thong-t...
+[Page download] Tổng requests đã gửi: 0 (bao gồm cả cancelled)
+[Page download] Success: 3/3 pages
+[Page download] Credits: 0 (regular: 0, premium: 0x10)
+[Retriever] [Download] Snippet: 0, Crawled: 3 in 0.00s
+[Retriever] Process: 0.05553s
+Split Học phí ngành Công nghệ Thông tin các trường Đại học năm 2024: 6214 chars -> 5 chunks
+Split Điểm chuẩn ngành Công nghệ thông tin trong 3 năm qua: 3795 chars -> 5 chunks
+Split ĐIỂM CHUẨN Trường Đại học Công nghệ Thông tin, ĐHQG ...: 6544 chars -> 13 chunks
+Split Học phí ngành Công nghệ thông tin tại các trường đại học năm ...: 9434 chars -> 11 chunks
+[ChunkRanker] Query: học phí ngành công nghệ thông tin các trường năm 2024...
+[ChunkRanker] Input chunks: 3
+[Retriever] [Prioritize] Added 1 table chunks before retrieval output
+[ChunkRanker] Query: điểm chuẩn ngành công nghệ thông tin các trường năm 2024...
+[ChunkRanker] Input chunks: 4
+[ChunkRanker] Query: điểm chuẩn ngành công nghệ thông tin các trường năm 2024...
+[ChunkRanker] Input chunks: 3
+[ChunkRanker] Query: học phí ngành công nghệ thông tin các trường năm 2024...
+[ChunkRanker] Input chunks: 3
+[ChunkRanker] Max score: 0.9989, Threshold: 0.4995 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.9989 (KEEP) | Thành Nguyễn 23/07/2024 - 14:10 Công nghệ Thông tin là một t...
+  [2] 0.9975 (KEEP) | ### Học phí ngành Công nghệ Thông tin các trường Đại học năm...
+  [3] 0.9869 (KEEP) | Với mức học phí ngành Công nghệ thông tin nói trên, nhiều tr...
+[ChunkRanker] Output chunks: 3 (filtered 0)
+[ChunkRanker] Max score: 0.9997, Threshold: 0.4998 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.9997 (KEEP) | Quốc Việt 22/07/2024 10:39 Ngành Công nghệ thông tin luôn nằ...
+  [2] 0.9063 (KEEP) | | STT | Tên trường | 6 | Trường Đại học Hà Nội | 25,7 - 26,0...
+  [3] 0.8968 (KEEP) | | STT | Tên trường | 20 | Trường Đại học Công nghiệp TP.HCM ...
+  [4] 0.8493 (KEEP) | ### Điểm chuẩn ngành Công nghệ thông tin trong 3 năm qua...
+[ChunkRanker] Output chunks: 4 (filtered 0)
+[ChunkRanker] Max score: 0.9973, Threshold: 0.4987 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.9973 (KEEP) | Theo đó, điểm chuẩn của trường từ 25,55 -28,3. Ngành Trí tuệ...
+  [2] 0.9915 (KEEP) | Trường Đại học Công nghệ Thông tin là một trung tâm đào tạo ...
+  [3] 0.9817 (KEEP) | ##### ĐIỂM CHUẨN Trường Đại học Công nghệ Thông tin, ĐHQG TP...
+[ChunkRanker] Output chunks: 3 (filtered 0)
+[Retriever] RAG: 1.44455s
+[ChunkRanker] Max score: 0.9993, Threshold: 0.4996 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.9993 (KEEP) | Nhiều trường đại học đã công bố học phí ngành Công nghệ thôn...
+  [2] 0.9970 (KEEP) | ### Học phí ngành Công nghệ thông tin tại các trường đại học...
+  [3] 0.9181 (KEEP) | Xin hỏi học phí ngành Công nghệ thông tin tại các trường đại...
+[ChunkRanker] Output chunks: 3 (filtered 0)
+[Retriever] RAG: 1.61658s
+[Retriever] [ChunkProcessor] 7 -> 1 chunks (queries=1)
+[DocumentQualityGate] Raw retrieve -> web_sources=2, rag_sources=1
+
+[DocumentQualityGate] STEP 3/3 - Validate and score web documents
+[DocumentQualityGate] Thresholds -> final_score>=0.58, relevance>=0.25, trust>=0.50, strict_mode=True
+[DocumentQualityGate] [01] PASS | final=0.800 (rel=0.778, trust=0.600, fresh=1.000, rich=1.000, spam=0.000) | title=ĐIỂM CHUẨN Trường Đại học Công nghệ Thông tin, ĐHQG ... | url=https://xaydungchinhsach.chinhphu.vn/diem-chuan-truong-dai-hoc-cong-nghe-thong-tin-dhqg-tphcm-2024-119240818225745588.htm
+[DocumentQualityGate] [02] PASS | final=0.750 (rel=0.667, trust=0.600, fresh=1.000, rich=1.000, spam=0.000) | title=Điểm chuẩn ngành Công nghệ thông tin trong 3 năm qua | url=https://daibieunhandan.vn/diem-chuan-nganh-cong-nghe-thong-tin-trong-3-nam-qua-10342269.html
+[DocumentQualityGate] Result -> web_sources=2/2, rag_sources=1/1, max_docs_after_gate=3
+[VLLM] fact_extractor | Instruction length: 306 | Prompt length: 1906 | kwargs: None
+INFO 05-05 06:13:31 [async_llm_engine.py:209] Added request ec4e4245e86e4deb8b2960805405919f.
+[Retriever] [ChunkProcessor] 6 -> 1 chunks (queries=1)
+[DocumentQualityGate] Raw retrieve -> web_sources=2, rag_sources=1
+
+[DocumentQualityGate] STEP 3/3 - Validate and score web documents
+[DocumentQualityGate] Thresholds -> final_score>=0.58, relevance>=0.25, trust>=0.50, strict_mode=True
+[DocumentQualityGate] [01] PASS | final=0.800 (rel=0.778, trust=0.600, fresh=1.000, rich=1.000, spam=0.000) | title=Học phí ngành Công nghệ Thông tin các trường Đại học năm 2024 | url=https://thitruongtaichinhtiente.vn/hoc-phi-nganh-cong-nghe-thong-tin-cac-truong-dai-hoc-nam-2024-60328.html
+[DocumentQualityGate] [02] PASS | final=0.800 (rel=0.778, trust=0.600, fresh=1.000, rich=1.000, spam=0.000) | title=Học phí ngành Công nghệ thông tin tại các trường đại học năm ... | url=https://thuvienphapluat.vn/hoi-dap-phap-luat/hoc-phi-nganh-cong-nghe-thong-tin-tai-cac-truong-dai-hoc-nam-20242025-la-bao-nhieu-138023842.html
+[DocumentQualityGate] Result -> web_sources=2/2, rag_sources=1/1, max_docs_after_gate=3
+[VLLM] fact_extractor | Instruction length: 306 | Prompt length: 791 | kwargs: None
+INFO 05-05 06:13:31 [async_llm_engine.py:209] Added request 083be83677ea4cc4b435bd3621285742.
+INFO 05-05 06:13:32 [metrics.py:386] Avg prompt throughput: 234.0 tokens/s, Avg generation throughput: 33.6 tokens/s, Running: 2 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 2.8%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:13:33 [async_llm_engine.py:177] Finished request 083be83677ea4cc4b435bd3621285742.
+  ✓ SQ#3 DONE  web=2 rag=1 conf=0.95
+      Fact[3]: học phí ngành CNTT của các trường năm 2024
+INFO 05-05 06:13:34 [async_llm_engine.py:177] Finished request ec4e4245e86e4deb8b2960805405919f.
+  ✓ SQ#2 DONE  web=2 rag=1 conf=0.95
+      Fact[2]: điểm chuẩn ngành CNTT của các trường năm 2024
+[MultiHop] [Hop 3] running 2 sub-q in parallel
+  ▶ SQ#4 START [reasoning/computation] deps=#2
+      Q-raw: lọc các trường có điểm chuẩn > 25
+      ── Reasoning INPUT (từ 1 dep) ──
+        • dep #2: fact=điểm chuẩn ngành CNTT của các trường năm 2024  | n_chunks=1
+[VLLM] reasoner | Instruction length: 366 | Prompt length: 2284 | kwargs: None
+INFO 05-05 06:13:34 [async_llm_engine.py:209] Added request 1c8916ae5a084f64805093fee7edbf81.
+  ▶ SQ#5 START [reasoning/computation] deps=#3
+      Q-raw: lọc các trường có học phí < 50 triệu/năm
+      ── Reasoning INPUT (từ 1 dep) ──
+        • dep #3: fact=học phí ngành CNTT của các trường năm 2024  | n_chunks=1
+[VLLM] reasoner | Instruction length: 366 | Prompt length: 1182 | kwargs: None
+INFO 05-05 06:13:34 [async_llm_engine.py:209] Added request 2f9fcf83e0b24cafbdeb3cd570748612.
+INFO 05-05 06:13:37 [metrics.py:386] Avg prompt throughput: 294.1 tokens/s, Avg generation throughput: 63.5 tokens/s, Running: 2 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 3.7%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:13:38 [async_llm_engine.py:177] Finished request 1c8916ae5a084f64805093fee7edbf81.
+[MultiHop]   SQ#4 reasoner OK conf=0.95 answer_preview=Trường Đại học Công nghệ Thông tin, ĐHQG TPHCM
+      Q-rewritten: lọc các trường có điểm chuẩn > 25 (tức điểm chuẩn ngành CNTT của các trường năm 2024)
+  ✓ SQ#4 DONE  web=0 rag=1 conf=0.95
+      Reasoner OUTPUT: Trường Đại học Công nghệ Thông tin, ĐHQG TPHCM
+INFO 05-05 06:13:41 [async_llm_engine.py:177] Finished request 2f9fcf83e0b24cafbdeb3cd570748612.
+[MultiHop]   SQ#5 reasoner OK conf=0.80 answer_preview=Trường Đại học Khoa học Tự nhiên - ĐH Quốc gia Hà Nội; Trường Đại học Công nghệ Thông tin - ĐH Bách Khoa Hà Nội; Trường 
+      Q-rewritten: lọc các trường có học phí < 50 triệu/năm (tức học phí ngành CNTT của các trường năm 2024)
+  ✓ SQ#5 DONE  web=0 rag=1 conf=0.80
+      Reasoner OUTPUT: Trường Đại học Khoa học Tự nhiên - ĐH Quốc gia Hà Nội; Trường Đại học Công nghệ Thông tin - ĐH Bách Khoa Hà Nội; Trường Đại học Công nghệ Thông tin - ĐH Bách Khoa TP.HCM
+[MultiHop] [Aggregate] web=6 rag=5 hops=3
+────────────────────────────────────────────────────────────────────────────────
+[DECOMPOSE result] 5 sub-question(s), sẽ chạy trong 3 hop(s)
+DAG plan:
+  • SQ#1 [web/list] deps=(root)
+      danh sách các trường đào tạo ngành CNTT năm 2024
+  • SQ#2 [local_db/numeric] deps=#1
+      điểm chuẩn ngành CNTT của các trường năm 2024
+  • SQ#3 [local_db/numeric] deps=#1
+      học phí ngành CNTT của các trường năm 2024
+  • SQ#4 [reasoning/computation] deps=#2
+      lọc các trường có điểm chuẩn > 25
+  • SQ#5 [reasoning/computation] deps=#3
+      lọc các trường có học phí < 50 triệu/năm
+────────────────────────────────────────────────────────────────────────────────
+[Step 2/4] EXECUTE → chạy hops theo topological order (sub-q ready song song)
+            (chi tiết từng SQ được in real-time trong _execute_subq_logged)
+────────────────────────────────────────────────────────────────────────────────
+[Step 3/4] AGGREGATE → dedup theo (url, chunk_index): web=6 chunks, rag=5 chunks
+  ⤷ SQ#1: contributed web=2 rag=1 fact=yes
+  ⤷ SQ#2: contributed web=2 rag=1 fact=yes
+  ⤷ SQ#3: contributed web=2 rag=1 fact=yes
+  ⤷ SQ#4: contributed web=0 rag=1 fact=yes
+  ⤷ SQ#5: contributed web=0 rag=1 fact=yes
+────────────────────────────────────────────────────────────────────────────────
+[Step 4/4] FORWARD → SufficiencyGate kiểm tra → Reader Qwen3-4B sinh câu trả lời
+════════════════════════════════════════════════════════════════════════════════ [MULTI-HOP] DONE
+
+[MULTI-HOP DONE] sub_q=5 | hops=3 | rag=5 | web=6
+[Sufficiency] sufficient=False score=0.010 reason=below_threshold
+
+================================================================================
+[RAG CHUNKS] Total 5 chunks selected for reader:
+--------------------------------------------------------------------------------
+[Chunk 1] title=Chương trình Đào tạo - Trường Đại học Sư phạm Kỹ thuật | url=https://daotao.ute.udn.vn/curriculums.asp | chunk_index=11
+Text preview:
+thuật Điện - Điện tử (Cử nhân) Chuyên ngành Kỹ thuật Điện tử Ngành Công nghệ Kỹ thuật Điện - Điện tử (Kỹ sư) Chuyên ngành Kỹ thuật Điện tử Ngành Công nghệ Kỹ thuật Điện tử - Viễn thông (Cử nhân) Chuyên ngành Điện tử máy tính- mạng truyền thông Ngành Công nghệ Kỹ thuật Điện tử - Viễn thông (Kỹ sư) Chuyên ngành Điện tử máy tính- mạng truyền thông Ngành Công nghệ Kỹ thuật Điều khiển và Tự động hóa (C
+--------------------------------------------------------------------------------
+[Chunk 2] title=ĐIỂM CHUẨN Trường Đại học Công nghệ Thông tin, ĐHQG ... | url=https://xaydungchinhsach.chinhphu.vn/diem-chuan-truong-dai-hoc-cong-nghe-thong-tin-dhqg-tphcm-2024-119240818225745588.htm | chunk_index=4
+Text preview:
+Theo đó, điểm chuẩn của trường từ 25,55 -28,3. Ngành Trí tuệ Nhân tạo là ngành có điểm chuẩn cao nhất 28,3. Tiếp theo là các ngành Khoa học Dữ liệu và Khoa học Máy tính.
+Điểm chuẩn trúng tuyển (đã tính điểm ưu tiên nếu có) cho các tổ hợp môn thi A00/A01/D01/D06/D07 như sau:
+Thí sinh có thể tra cứu giấy báo trúng tuyển và gọi nhập học vào lúc 09h00 ngày 19/8/2024 tại cổng thông tin tuyển sinh của T
+--------------------------------------------------------------------------------
+[Chunk 3] title=Học phí ngành Công nghệ Thông tin các trường Đại học năm 2024 | url=https://thitruongtaichinhtiente.vn/hoc-phi-nganh-cong-nghe-thong-tin-cac-truong-dai-hoc-nam-2024-60328.html | chunk_index=1
+Text preview:
+### Học phí ngành Công nghệ Thông tin các trường Đại học năm 2024
+--------------------------------------------------------------------------------
+[Chunk 4] title=Bước suy luận #4 | url=multihop://reasoning/sq_4 | chunk_index=0
+Text preview:
+[Kết quả bước suy luận: lọc các trường có điểm chuẩn > 25]
+Đáp án: Trường Đại học Công nghệ Thông tin, ĐHQG TPHCM
+Bằng chứng đầu vào:
+- Từ sub-question #2: điểm chuẩn ngành CNTT của các trường năm 2024
+--------------------------------------------------------------------------------
+[Chunk 5] title=Bước suy luận #5 | url=multihop://reasoning/sq_5 | chunk_index=0
+Text preview:
+[Kết quả bước suy luận: lọc các trường có học phí < 50 triệu/năm]
+Đáp án: Trường Đại học Khoa học Tự nhiên - ĐH Quốc gia Hà Nội; Trường Đại học Công nghệ Thông tin - ĐH Bách Khoa Hà Nội; Trường Đại học Công nghệ Thông tin - ĐH Bách Khoa TP.HCM
+Bằng chứng đầu vào:
+- Từ sub-question #3: học phí ngành CNTT của các trường năm 2024
+================================================================================
+
+================================================================================
+[RAG CONTEXT] Formatted chunks sent to reader:
+--------------------------------------------------------------------------------
+[1] Chương trình Đào tạo - Trường Đại học Sư phạm Kỹ thuật
+
+URL: https://daotao.ute.udn.vn/curriculums.asp
+
+thuật Điện - Điện tử (Cử nhân) Chuyên ngành Kỹ thuật Điện tử Ngành Công nghệ Kỹ thuật Điện - Điện tử (Kỹ sư) Chuyên ngành Kỹ thuật Điện tử Ngành Công nghệ Kỹ thuật Điện tử - Viễn thông (Cử nhân) Chuyên ngành Điện tử máy tính- mạng truyền thông Ngành Công nghệ Kỹ thuật Điện tử - Viễn thông (Kỹ sư) Chuyên ngành Điện tử máy tính- mạng truyền thông Ngành Công nghệ Kỹ thuật Điều khiển và Tự động hóa (Cử nhân) Ngành Công nghệ Kỹ thuật Điều khiển và Tự động hóa (Kỹ sư) Ngành Công nghệ Thông tin (Cử nhân) Ngành Công nghệ Thông tin (Kỹ sư) Ngành Công nghệ Kỹ thuật Xây dựng (Cử nhân) Chuyên ngành Xây dựng Dân dụng & Công nghiệp Ngành Công nghệ Kỹ thuật Xây dựng (Kỹ sư) Chuyên ngành Xây dựng Dân dụng & Công nghiệp Ngành Công nghệ Kỹ thuật Giao thông (Cử nhân) Chuyên ngành Xây dựng Cầu đường Ngành Công nghệ Kỹ thuật Giao thông (Kỹ sư) Chuyên ngành Xây dựng Cầu đường Ngành Kỹ thuật Cơ sở Hạ tầng (Cử nhân) Chuyên ngành Xây dựng hạ tầng đô thị Ngành Kỹ thuật Cơ sở Hạ tầng (Kỹ sư) Chuyên ngành Xây dựng hạ tầng đô thị Ngành Công nghệ Kỹ thuật Môi trường (Cử nhân) Ngành Công nghệ Kỹ thuật Môi trường (Kỹ sư) Ngành Kỹ thuật Thực phẩm (Cử nhân) Ngành Kỹ thuật Thực phẩm (Kỹ sư) Ngành Sư phạm Kỹ thuật công nghiệp Ngành Công nghệ kỹ thuật Kiến trúc Hồ sơ mở Ngành Công nghệ kỹ thuật Kiến trúc Chương trình Đào tạo - áp dụng khóa đào tạo 2019 Ngành Công nghệ Kỹ thuật Cơ khí (Cử nhân) Ngành Công nghệ Kỹ thuật Cơ khí (Kỹ sư) Ngành Công nghệ Kỹ thuật Ô tô (Cử nhân) Ngành Công nghệ Kỹ thuật Ô tô (Kỹ sư) Ngành Công nghệ Kỹ thuật Nhiệt (Cử nhân) Ngành Công nghệ Kỹ thuật Nhiệt (Kỹ sư) Ngành Công nghệ Kỹ thuật Cơ Điện tử (Cử nhân) Ngành
+
+---
+
+[2] ĐIỂM CHUẨN Trường Đại học Công nghệ Thông tin, ĐHQG ...
+
+URL: https://xaydungchinhsach.chinhphu.vn/diem-chuan-truong-dai-hoc-cong-nghe-thong-tin-dhqg-tphcm-2024-119240818225745588.htm
+
+Theo đó, điểm chuẩn của trường từ 25,55 -28,3. Ngành Trí tuệ Nhân tạo là ngành có điểm chuẩn cao nhất 28,3. Tiếp theo là các ngành Khoa học Dữ liệu và Khoa học Máy tính.
+Điểm chuẩn trúng tuyển (đã tính điểm ưu tiên nếu có) cho các tổ hợp môn thi A00/A01/D01/D06/D07 như sau:
+Thí sinh có thể tra cứu giấy báo trúng tuyển và gọi nhập học vào lúc 09h00 ngày 19/8/2024 tại cổng thông tin tuyển sinh của Trường.
+Thí sinh xác nhận nhập học trực tuyến từ ngày 19/8/2024 đến 17h ngày 27/8/2024 trên Hệ thống Quản lý thi tốt nghiệp THPT của Bộ GD&ĐT (https://thisinh.thitotnghiepthpt.edu.vn/).
+Tất cả thí sinh trúng tuyển đều phải thực hiện xác nhận nhập học. Quá thời hạn trên, thí sinh không xác nhận nhập học xem như từ chối học tại trường.
+Hướng dẫn cụ thể sẽ được đăng trên website tuyển sinh của trường và qua các kênh thông tin của nhà trường. Hotline hỗ trợ: 090.883.1246 hoặc 0971.203.246
+Trường Đại học Công nghệ Thông tin, ĐHQG TPHCM là trường đại học công lập chuyên ngành CNTT được thành lập theo Quyết định số 134/2006/QĐ-TTg ngày 08/06/2006 của Thủ tướng Chính phủ trên cơ sở Trung tâm Phát triển Công nghệ Thông tin. Trường khai giảng năm học đầu tiên vào tháng 10/2006.
+
+---
+
+[3] Học phí ngành Công nghệ Thông tin các trường Đại học năm 202
+
+URL: https://thitruongtaichinhtiente.vn/hoc-phi-nganh-cong-nghe-thong-tin-cac-truong-dai-hoc-nam-2024-60328.html
+
+### Học phí ngành Công nghệ Thông tin các trường Đại học năm 2024
+
+---
+
+[4] Bước suy luận #4
+
+URL: multihop://reasoning/sq_4
+
+[Kết quả bước suy luận: lọc các trường có điểm chuẩn > 25]
+Đáp án: Trường Đại học Công nghệ Thông tin, ĐHQG TPHCM
+Bằng chứng đầu vào:
+- Từ sub-question #2: điểm chuẩn ngành CNTT của các trường năm 2024
+
+---
+
+[5] Bước suy luận #5
+
+URL: multihop://reasoning/sq_5
+
+[Kết quả bước suy luận: lọc các trường có học phí < 50 triệu/năm]
+Đáp án: Trường Đại học Khoa học Tự nhiên - ĐH Quốc gia Hà Nội; Trường Đại học Công nghệ Thông tin - ĐH Bách Khoa Hà Nội; Trường Đại học Công nghệ Thông tin - ĐH Bách Khoa TP.HCM
+Bằng chứng đầu vào:
+- Từ sub-question #3: học phí ngành CNTT của các trường năm 2024
+
+---
+================================================================================
+[FINAL PROMPT] Qwen4B input:
+--------------------------------------------------------------------------------
+Hiện tại là năm 2025, sử dụng thông tin mới nhất có thể. 
+Nếu không tìm thấy đủ dữ liệu đáng tin để xây dựng đầy đủ theo form, chỉ trả lời: "Tôi không tìm thấy thông tin phù hợp.".
+Thông tin tham khảo:
+[1] Chương trình Đào tạo - Trường Đại học Sư phạm Kỹ thuật
+
+URL: https://daotao.ute.udn.vn/curriculums.asp
+
+thuật Điện - Điện tử (Cử nhân) Chuyên ngành Kỹ thuật Điện tử Ngành Công nghệ Kỹ thuật Điện - Điện tử (Kỹ sư) Chuyên ngành Kỹ thuật Điện tử Ngành Công nghệ Kỹ thuật Điện tử - Viễn thông (Cử nhân) Chuyên ngành Điện tử máy tính- mạng truyền thông Ngành Công nghệ Kỹ thuật Điện tử - Viễn thông (Kỹ sư) Chuyên ngành Điện tử máy tính- mạng truyền thông Ngành Công nghệ Kỹ thuật Điều khiển và Tự động hóa (Cử nhân) Ngành Công nghệ Kỹ thuật Điều khiển và Tự động hóa (Kỹ sư) Ngành Công nghệ Thông tin (Cử nhân) Ngành Công nghệ Thông tin (Kỹ sư) Ngành Công nghệ Kỹ thuật Xây dựng (Cử nhân) Chuyên ngành Xây dựng Dân dụng & Công nghiệp Ngành Công nghệ Kỹ thuật Xây dựng (Kỹ sư) Chuyên ngành Xây dựng Dân dụng & Công nghiệp Ngành Công nghệ Kỹ thuật Giao thông (Cử nhân) Chuyên ngành Xây dựng Cầu đường Ngành Công nghệ Kỹ thuật Giao thông (Kỹ sư) Chuyên ngành Xây dựng Cầu đường Ngành Kỹ thuật Cơ sở Hạ tầng (Cử nhân) Chuyên ngành Xây dựng hạ tầng đô thị Ngành Kỹ thuật Cơ sở Hạ tầng (Kỹ sư) Chuyên ngành Xây dựng hạ tầng đô thị Ngành Công nghệ Kỹ thuật Môi trường (Cử nhân) Ngành Công nghệ Kỹ thuật Môi trường (Kỹ sư) Ngành Kỹ thuật Thực phẩm (Cử nhân) Ngành Kỹ thuật Thực phẩm (Kỹ sư) Ngành Sư phạm Kỹ thuật công nghiệp Ngành Công nghệ kỹ thuật Kiến trúc Hồ sơ mở Ngành Công nghệ kỹ thuật Kiến trúc Chương trình Đào tạo - áp dụng khóa đào tạo 2019 Ngành Công nghệ Kỹ thuật Cơ khí (Cử nhân) Ngành Công nghệ Kỹ thuật Cơ khí (Kỹ sư) Ngành Công nghệ Kỹ thuật Ô tô (Cử nhân) Ngành Công nghệ Kỹ thuật Ô tô (Kỹ sư) Ngành Công nghệ Kỹ thuật Nhiệt (Cử nhân) Ngành Công nghệ Kỹ thuật Nhiệt (Kỹ sư) Ngành Công nghệ Kỹ thuật Cơ Điện tử (Cử nhân) Ngành
+
+---
+
+[2] ĐIỂM CHUẨN Trường Đại học Công nghệ Thông tin, ĐHQG ...
+
+URL: https://xaydungchinhsach.chinhphu.vn/diem-chuan-truong-dai-hoc-cong-nghe-thong-tin-dhqg-tphcm-2024-119240818225745588.htm
+
+Theo đó, điểm chuẩn của trường từ 25,55 -28,3. Ngành Trí tuệ Nhân tạo là ngành có điểm chuẩn cao nhất 28,3. Tiếp theo là các ngành Khoa học Dữ liệu và Khoa học Máy tính.
+Điểm chuẩn trúng tuyển (đã tính điểm ưu tiên nếu có) cho các tổ hợp môn thi A00/A01/D01/D06/D07 như sau:
+Thí sinh có thể tra cứu giấy báo trúng tuyển và gọi nhập học vào lúc 09h00 ngày 19/8/2024 tại cổng thông tin tuyển sinh của Trường.
+Thí sinh xác nhận nhập học trực tuyến từ ngày 19/8/2024 đến 17h ngày 27/8/2024 trên Hệ thống Quản lý thi tốt nghiệp THPT của Bộ GD&ĐT (https://thisinh.thitotnghiepthpt.edu.vn/).
+Tất cả thí sinh trúng tuyển đều phải thực hiện xác nhận nhập học. Quá thời hạn trên, thí sinh không xác nhận nhập học xem như từ chối học tại trường.
+Hướng dẫn cụ thể sẽ được đăng trên website tuyển sinh của trường và qua các kênh thông tin của nhà trường. Hotline hỗ trợ: 090.883.1246 hoặc 0971.203.246
+Trường Đại học Công nghệ Thông tin, ĐHQG TPHCM là trường đại học công lập chuyên ngành CNTT được thành lập theo Quyết định số 134/2006/QĐ-TTg ngày 08/06/2006 của Thủ tướng Chính phủ trên cơ sở Trung tâm Phát triển Công nghệ Thông tin. Trường khai giảng năm học đầu tiên vào tháng 10/2006.
+
+---
+
+[3] Học phí ngành Công nghệ Thông tin các trường Đại học năm 202
+
+URL: https://thitruongtaichinhtiente.vn/hoc-phi-nganh-cong-nghe-thong-tin-cac-truong-dai-hoc-nam-2024-60328.html
+
+### Học phí ngành Công nghệ Thông tin các trường Đại học năm 2024
+
+---
+
+[4] Bước suy luận #4
+
+URL: multihop://reasoning/sq_4
+
+[Kết quả bước suy luận: lọc các trường có điểm chuẩn > 25]
+Đáp án: Trường Đại học Công nghệ Thông tin, ĐHQG TPHCM
+Bằng chứng đầu vào:
+- Từ sub-question #2: điểm chuẩn ngành CNTT của các trường năm 2024
+
+---
+
+[5] Bước suy luận #5
+
+URL: multihop://reasoning/sq_5
+
+[Kết quả bước suy luận: lọc các trường có học phí < 50 triệu/năm]
+Đáp án: Trường Đại học Khoa học Tự nhiên - ĐH Quốc gia Hà Nội; Trường Đại học Công nghệ Thông tin - ĐH Bách Khoa Hà Nội; Trường Đại học Công nghệ Thông tin - ĐH Bách Khoa TP.HCM
+Bằng chứng đầu vào:
+- Từ sub-question #3: học phí ngành CNTT của các trường năm 2024
+
+---
+Câu hỏi:
+Danh sách các trường đào ngành CNTT với điểm chuẩn trên 25 điểm và học phí dưới 50 triệu/năm
+================================================================================
+
+INFO:     14.248.59.214:0 - "POST /pre_inference HTTP/1.1" 200 OK
+INFO:     14.248.59.214:0 - "POST /inference/3b88bb3d-98af-40fb-bfbb-18805287cf21 HTTP/1.1" 200 OK
+[VLLM] CallType.READER | Instruction length: 362 | Prompt length: 4322 | kwargs: None
+[VLLm] Using Qwen Reader Lora
+INFO 05-05 06:13:47 [async_llm_engine.py:209] Added request ad18d802a66f49d78d4b0825a285d65e.
+INFO 05-05 06:13:48 [metrics.py:386] Avg prompt throughput: 141.7 tokens/s, Avg generation throughput: 19.3 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 3.6%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:13:53 [metrics.py:386] Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 33.0 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 3.9%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:13:58 [metrics.py:386] Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 33.0 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 4.3%, CPU KV cache usage: 0.0%.
+INFO 05-05 06:13:59 [async_llm_engine.py:177] Finished request ad18d802a66f49d78d4b0825a285d65e.
