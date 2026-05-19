@@ -83,7 +83,7 @@ from data_retriever import *
 from server import *
 print("[Startup] Core modules imported.", flush=True)
 from school_mapper import SchoolMapper
-from typing import AsyncGenerator, NotRequired, Protocol
+from typing import Any, AsyncGenerator, NotRequired, Protocol
 from typing import Callable, AsyncGenerator
 from openai import AsyncOpenAI, OpenAI
 from google import genai
@@ -96,9 +96,360 @@ import enum
 import traceback
 import copy
 import re
+import unicodedata
 from datetime import datetime
 
 from typing import Protocol, AsyncGenerator, TypedDict
+
+
+_DEBUG_FALSE_VALUES = {"0", "false", "no", "off"}
+
+
+def _debug_trace_enabled() -> bool:
+    return str(os.getenv("BOT_DEBUG_TRACE", "1")).strip().lower() not in _DEBUG_FALSE_VALUES
+
+
+def _debug_int_env(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except Exception:
+        return default
+
+
+def _debug_clip(text: Any, limit: int | None = None) -> str:
+    value = "" if text is None else str(text)
+    if limit is None:
+        limit = _debug_int_env("BOT_DEBUG_TEXT_CHARS", 12000)
+    if limit <= 0 or len(value) <= limit:
+        return value
+    return value[:limit] + f"\n...[truncated {len(value) - limit} chars]"
+
+
+def _debug_redact(value: Any) -> Any:
+    secret_markers = ("KEY", "TOKEN", "SECRET", "PASSWORD", "AUTH")
+    if isinstance(value, dict):
+        out: dict[str, Any] = {}
+        for key, item in value.items():
+            key_str = str(key)
+            if any(marker in key_str.upper() for marker in secret_markers):
+                out[key_str] = "[REDACTED]"
+            else:
+                out[key_str] = _debug_redact(item)
+        return out
+    if isinstance(value, (list, tuple)):
+        return [_debug_redact(item) for item in value]
+    return value
+
+
+def _debug_json(value: Any) -> str:
+    try:
+        return json.dumps(_debug_redact(value), ensure_ascii=False, indent=2, default=str)
+    except Exception:
+        return str(value)
+
+
+def _debug_block(title: str, body: Any = "", *, limit: int | None = None) -> None:
+    if not _debug_trace_enabled():
+        return
+    print("\n" + "=" * 80)
+    print(f"[{title}]")
+    print("=" * 80)
+    if body is not None:
+        print(_debug_clip(body, limit))
+
+
+def _debug_source_list(label: str, sources: list[Any]) -> None:
+    if not _debug_trace_enabled():
+        return
+    text_limit = _debug_int_env("BOT_DEBUG_SOURCE_TEXT_CHARS", 0)
+    print("\n" + "=" * 80)
+    print(f"[{label}] count={len(sources)} text_limit={text_limit} (0=full)")
+    print("=" * 80)
+    if not sources:
+        print("(empty)")
+        return
+    for idx, source in enumerate(sources, 1):
+        text = source.get("text", "") if isinstance(source, dict) else ""
+        meta = {
+            "index": idx,
+            "title": source.get("title", "") if isinstance(source, dict) else "",
+            "url": source.get("url", "") if isinstance(source, dict) else "",
+            "query": source.get("query", "") if isinstance(source, dict) else "",
+            "score": source.get("score", None) if isinstance(source, dict) else None,
+            "chunk_index": source.get("chunk_index", None) if isinstance(source, dict) else None,
+            "text_chars": len(text or ""),
+        }
+        print("-" * 80)
+        print(_debug_json(meta))
+        print("[SOURCE_TEXT]")
+        print(_debug_clip(text, text_limit))
+
+
+def _strip_accents_for_match(text: str) -> str:
+    normalized = unicodedata.normalize("NFD", text or "")
+    without_marks = "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
+    return without_marks.replace("đ", "d").replace("Đ", "D")
+
+
+def _normalize_for_match(text: str) -> str:
+    return re.sub(r"\s+", " ", _strip_accents_for_match(text).lower()).strip()
+
+
+def _term_in_text(term: str, text: str) -> bool:
+    term_norm = _normalize_for_match(term)
+    if not term_norm:
+        return False
+    if re.fullmatch(r"[a-z0-9\s.+/#&-]+", term_norm):
+        return re.search(rf"(?<!\w){re.escape(term_norm)}(?!\w)", text) is not None
+    return term_norm in text
+
+
+def _query_focus_terms(question: str) -> list[str]:
+    text = _normalize_for_match(question)
+    terms: list[str] = []
+    signal_terms = [
+        "tuyen sinh", "de an tuyen sinh", "thong tin tuyen sinh",
+        "diem chuan", "diem trung tuyen", "diem xet tuyen", "diem san",
+        "diem nhan ho so", "nguong dau vao", "nguong dam bao chat luong",
+        "hoc phi", "le phi", "hoc bong", "mien giam", "tin dung sinh vien",
+        "chi tieu", "ma nganh", "ten nganh", "to hop mon", "khoi thi",
+        "phuong thuc xet tuyen", "xet tuyen", "xet tuyen som", "xet tuyen ket hop",
+        "tuyen thang", "uu tien xet tuyen", "nguyen vong", "ho so",
+        "thoi gian dang ky", "han dang ky", "lich tuyen sinh", "nhap hoc",
+        "xac nhan nhap hoc", "cong bo ket qua",
+        "hoc ba", "thi thpt", "tot nghiep thpt", "danh gia nang luc",
+        "danh gia tu duy", "dgnl", "dgtd", "tsa", "sat", "ielts", "toefl",
+        "chuong trinh dao tao", "chuan dau ra", "thoi gian dao tao",
+        "bang cap", "cu nhan", "ky su", "chat luong cao", "tien tien",
+        "lien ket quoc te", "song bang",
+        "ky tuc xa", "noi tru", "ngoai tru", "co so dao tao", "dia diem hoc",
+        "campus", "co so vat chat",
+        "co hoi viec lam", "viec lam", "muc luong", "thuc tap",
+        "doanh nghiep", "dau ra",
+    ]
+    terms.extend(term for term in signal_terms if _term_in_text(term, text))
+
+    phrase_patterns = [
+        r"\b(?:nganh|nhom nganh|linh vuc|chuyen nganh|chuong trinh|chuong trinh dao tao|khoa)\s+([a-z0-9][a-z0-9\s/&+.\-]{2,80})",
+        r"\b(?:truong|dai hoc|hoc vien)\s+([a-z0-9][a-z0-9\s/&+.\-]{2,80})",
+    ]
+    stop_tail = re.compile(
+        r"\b(?:nam|tai|o|cua|cac|nhung|co|khong|la|bao nhieu|cao|thap|nhat|kem|voi|va|so sanh|xep hang|top|theo)\b.*$"
+    )
+    for pattern in phrase_patterns:
+        for match in re.finditer(pattern, text):
+            phrase = stop_tail.sub("", match.group(1)).strip(" ,.;:-")
+            if len(phrase) >= 3:
+                terms.append(phrase)
+
+    for abbr in re.findall(r"\b[A-Z0-9][A-Z0-9+/&.-]{1,8}\b", question or ""):
+        terms.append(_normalize_for_match(abbr))
+
+    domain_aliases = {
+        "cong nghe thong tin": ["cntt", "it", "information technology"],
+        "khoa hoc may tinh": ["khmt", "computer science"],
+        "ky thuat may tinh": ["computer engineering"],
+        "tri tue nhan tao": ["ai", "artificial intelligence"],
+        "khoa hoc du lieu": ["khdl", "data science"],
+        "an toan thong tin": ["attt", "information security"],
+        "an ninh mang": ["cyber security", "cybersecurity"],
+        "ky thuat phan mem": ["software engineering", "ktpm"],
+        "he thong thong tin": ["httt", "information systems"],
+        "mang may tinh": ["computer network", "networking"],
+        "thuong mai dien tu": ["tmdt", "ecommerce", "e-commerce"],
+        "dien tu vien thong": ["dtvt", "electronics and telecommunications"],
+        "ky thuat dien": ["dien dien tu", "electrical engineering"],
+        "dieu khien va tu dong hoa": ["automation", "tu dong hoa"],
+        "co dien tu": ["mechatronics"],
+        "ky thuat co khi": ["co khi", "mechanical engineering"],
+        "ky thuat o to": ["cong nghe ky thuat o to", "automotive engineering"],
+        "xay dung": ["ky thuat xay dung", "civil engineering"],
+        "kien truc": ["architecture"],
+        "ky thuat hoa hoc": ["hoa hoc", "chemical engineering"],
+        "cong nghe thuc pham": ["food technology"],
+        "ky thuat moi truong": ["moi truong", "environmental engineering"],
+        "logistics": ["logistics va quan ly chuoi cung ung", "supply chain"],
+        "quan tri kinh doanh": ["qtkd", "business administration"],
+        "marketing": ["digital marketing"],
+        "kinh doanh quoc te": ["international business"],
+        "tai chinh ngan hang": ["finance banking", "ngan hang"],
+        "ke toan": ["accounting"],
+        "kiem toan": ["auditing"],
+        "ngon ngu anh": ["english language"],
+        "ngon ngu trung": ["tieng trung", "chinese language"],
+        "ngon ngu nhat": ["tieng nhat", "japanese language"],
+        "luat": ["law"],
+        "luat kinh te": ["economic law"],
+        "quan he quoc te": ["international relations"],
+        "bao chi": ["journalism"],
+        "truyen thong da phuong tien": ["multimedia communication"],
+        "tam ly hoc": ["psychology"],
+        "su pham": ["giao duc", "teacher education"],
+        "y khoa": ["medicine", "bac si da khoa"],
+        "duoc hoc": ["pharmacy"],
+        "dieu duong": ["nursing"],
+        "rang ham mat": ["dentistry"],
+        "y hoc co truyen": ["traditional medicine"],
+        "xet nghiem y hoc": ["medical laboratory"],
+        "thu y": ["veterinary"],
+        "nong nghiep": ["agriculture"],
+        "thuy san": ["aquaculture"],
+        "thiet ke do hoa": ["graphic design"],
+        "my thuat": ["fine arts"],
+    }
+    for canonical, aliases in domain_aliases.items():
+        if _term_in_text(canonical, text) or any(_term_in_text(alias, text) for alias in aliases):
+            terms.extend([canonical, *aliases])
+    terms.extend(re.findall(r"\b(?:19|20)\d{2}\b", question or ""))
+    seen: set[str] = set()
+    out: list[str] = []
+    for term in terms:
+        norm = _normalize_for_match(term)
+        if norm and norm not in seen:
+            seen.add(norm)
+            out.append(norm)
+    return out
+
+
+def _select_relevant_evidence_text(question: str, text: str, max_chars: int) -> str:
+    """Keep table headers and rows matching the question instead of truncating the first chars."""
+    if not text or max_chars <= 0 or len(text) <= max_chars:
+        return text or ""
+    focus_terms = _query_focus_terms(question)
+    q_tokens = set(re.findall(r"\w+", _normalize_for_match(question), flags=re.UNICODE))
+    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+    if not lines:
+        return text[:max_chars]
+
+    header_idx: set[int] = set()
+    scored: list[tuple[int, int, str]] = []
+    for idx, line in enumerate(lines):
+        norm = _normalize_for_match(line)
+        score = 0
+        if "|" in line and any(h in norm for h in [
+            "ma nganh", "ten nganh", "2024", "2025", "hoc phi", "diem chuan",
+            "diem trung tuyen", "diem san", "chi tieu", "to hop", "khoi thi",
+            "phuong thuc", "xet tuyen", "hoc bong", "ma xet tuyen",
+        ]):
+            score += 4
+            header_idx.add(idx)
+        score += sum(5 for term in focus_terms if term and term in norm)
+        line_tokens = set(re.findall(r"\w+", norm, flags=re.UNICODE))
+        score += min(5, len(q_tokens.intersection(line_tokens)))
+        if score > 0:
+            scored.append((score, idx, line))
+
+    selected_idx: set[int] = set()
+    for idx in sorted(header_idx):
+        selected_idx.add(idx)
+        if idx + 1 < len(lines):
+            selected_idx.add(idx + 1)
+    for _, idx, _ in sorted(scored, key=lambda item: (-item[0], item[1])):
+        for j in range(max(0, idx - 1), min(len(lines), idx + 2)):
+            selected_idx.add(j)
+        candidate = "\n".join(lines[j] for j in sorted(selected_idx))
+        if len(candidate) >= max_chars:
+            break
+
+    selected = "\n".join(lines[j] for j in sorted(selected_idx))
+    if not selected.strip():
+        selected = text[:max_chars]
+    if len(selected) > max_chars:
+        selected = selected[:max_chars]
+    return selected
+
+
+def _is_table_like_text(text: str) -> bool:
+    return "[BANG]" in (text or "") or (text or "").count("|") >= 6
+
+
+def _extract_admission_table_evidence(question: str, text: str, max_chars: int = 6000) -> str:
+    if not text or max_chars <= 0 or not _is_table_like_text(text):
+        return ""
+    q_norm = _normalize_for_match(question)
+    score_query = any(
+        _term_in_text(term, q_norm)
+        for term in ["diem chuan", "diem trung tuyen", "diem xet tuyen", "diem san"]
+    )
+    if not score_query:
+        return ""
+
+    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+    if not lines:
+        return ""
+
+    header_terms = [
+        "diem chuan", "diem trung tuyen", "diem xet tuyen", "diem san",
+        "ma xet tuyen", "ma nganh", "ten nganh", "nganh dao tao", "to hop",
+    ]
+    start_idx: int | None = None
+    for idx, line in enumerate(lines):
+        norm = _normalize_for_match(line)
+        is_table_marker = "[bang]" in norm
+        is_header = "|" in line and any(_term_in_text(term, norm) for term in header_terms)
+        if is_table_marker or is_header:
+            start_idx = max(0, idx - 4)
+            break
+
+    if start_idx is None:
+        table_rows = [i for i, line in enumerate(lines) if "|" in line and line.count("|") >= 2]
+        if len(table_rows) < 3:
+            return ""
+        start_idx = max(0, table_rows[0] - 3)
+
+    selected: list[str] = []
+    for line in lines[start_idx:]:
+        candidate = "\n".join(selected + [line])
+        if len(candidate) > max_chars:
+            break
+        selected.append(line)
+    return "\n".join(selected).strip()
+
+
+def _augment_rag_with_web_table_evidence(
+    question: str,
+    web_sources: list[WebSource],
+    rag_sources: list[RagSource],
+    *,
+    max_sources: int = 2,
+    max_chars: int = 6000,
+) -> list[RagSource]:
+    """Rescue exact admissions tables from web_sources when chunk ranking misses them."""
+    if not web_sources:
+        return rag_sources
+    existing_table_urls = {
+        r.get("url", "")
+        for r in rag_sources
+        if _is_table_like_text(r.get("text", "") or "")
+    }
+    additions: list[RagSource] = []
+    for idx, source in enumerate(web_sources, 1):
+        url = source.get("url", "")
+        if not url or url in existing_table_urls:
+            continue
+        table_text = _extract_admission_table_evidence(
+            question, source.get("text", "") or "", max_chars=max_chars
+        )
+        if not table_text:
+            continue
+        additions.append({
+            "chunk_index": -100000 - idx,
+            "query": question,
+            "title": source.get("title", ""),
+            "url": url,
+            "text": table_text,
+        })
+        if len(additions) >= max_sources:
+            break
+    if additions:
+        print(
+            f"[ReaderContextRescue] Added {len(additions)} table chunk(s) from web_sources "
+            "because selected RAG missed admissions tables"
+        )
+        _debug_source_list("READER_RESCUED_TABLE_CHUNKS", additions)
+    return additions + rag_sources
+
+
 class KeywordInfo(TypedDict):
     query: str
     priority: float
@@ -203,7 +554,7 @@ class LocalRetriever:
         web_sources: list[WebSource] = []
         rag_sources: list[RagSource] = []
         try:
-            for kw in keywords:
+            for idx, kw in enumerate(keywords):
                 school_id = kw.get("school_id")
                 section = kw.get("section")
                 if school_id and section:
@@ -211,28 +562,30 @@ class LocalRetriever:
                     title = f"Tìm trường ĐH-CĐ - Cốc Cốc ({school_id})"
                     combined_content = "\n\n".join([doc.page_content for doc in docs])
                     description = combined_content[:100] + "..." if len(combined_content) > 100 else combined_content
+                    source_url = f"https://hoctap.coccoc.com/tim-truong-dh-cd#{school_id}-{section}"
                     web_source: WebSource = {
                         "query": f"{school_id}:{section}",
                         "title": title,
                         "description": description,
-                        "url": "https://hoctap.coccoc.com/tim-truong-dh-cd",
+                        "url": source_url,
                         "text": combined_content,
                         "files": [],
                         "score": 1
                     }
                     rag_source: RagSource = {
-                        "chunk_index": 0,
+                        "chunk_index": idx,
                         "query": f"{school_id}:{section}",
                         "title": title,
-                        "url": "https://hoctap.coccoc.com/tim-truong-dh-cd",
+                        "url": source_url,
                         "text": combined_content,
                     }
                     web_sources.append(web_source)
                     rag_sources.append(rag_source)
         except:
             traceback.print_exc()
-        finally:            
-            return web_sources, rag_sources
+        _debug_source_list("LOCAL_WEB_SOURCES", web_sources)
+        _debug_source_list("LOCAL_RAG_CHUNKS", rag_sources)
+        return web_sources, rag_sources
         
 class WebRetriever:
     """Search in web"""
@@ -279,6 +632,79 @@ class WebRetriever:
         overlap = len(query_tokens.intersection(text_tokens))
         return overlap / max(1, len(query_tokens))
 
+    def _canonical_url(self, url: str) -> str:
+        from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
+
+        if not url:
+            return ""
+        parsed = urlparse(url)
+        filtered_query = [
+            (k, v) for k, v in parse_qsl(parsed.query, keep_blank_values=False)
+            if not k.lower().startswith("utm_")
+        ]
+        normalized = parsed._replace(path=(parsed.path.rstrip("/") or "/"), query=urlencode(filtered_query), fragment="")
+        return urlunparse(normalized)
+
+    def _source_safety_reason(self, question: str, source: dict) -> str | None:
+        from urllib.parse import urlparse
+
+        title = source.get("title", "") or ""
+        url = source.get("url", "") or ""
+        description = source.get("description", "") or ""
+        text = source.get("text", "") or ""
+        domain = (urlparse(url).netloc or "").lower()
+        merged = _normalize_for_match(f"{title} {description} {url} {text[:3000]}")
+        question_norm = _normalize_for_match(question)
+
+        hard_bad_domains = [
+            "vieclam", "topcv", "career", "jobs", "jobstreet", "timviec",
+            "viec-lam", "vieclamtot", "123job", "itviec",
+        ]
+        job_terms = [
+            "mong muốn tìm việc", "tìm việc", "việc làm", "tuyển dụng",
+            "nhân viên", "thực tập sinh", "trưởng phòng nhân sự", "e-commerce executive",
+        ]
+        admission_terms = [
+            "điểm chuẩn", "học phí", "tuyển sinh", "xét tuyển", "ngành đào tạo",
+            "admission", "tuition",
+        ]
+        asks_admission = any(term in question_norm for term in admission_terms)
+        if asks_admission and any(bad in domain for bad in hard_bad_domains):
+            return f"bad_domain_for_admission:{domain}"
+        if asks_admission and sum(1 for term in job_terms if term in merged) >= 2:
+            return "job_content_for_admission_query"
+        if len(self._tokenize(text)) < 20 and not source.get("files"):
+            return "too_little_content"
+        return None
+
+    def _source_safety_filter(
+        self,
+        question: str,
+        web_sources: list[WebSource],
+        rag_sources: list[RagSource],
+        params: GenerationParams,
+    ) -> tuple[list[WebSource], list[RagSource]]:
+        quality_log = params.get("quality_log", False)
+        accepted_web: list[WebSource] = []
+        accepted_urls: set[str] = set()
+        for idx, source in enumerate(web_sources, 1):
+            reason = self._source_safety_reason(question, source)
+            if reason:
+                if quality_log:
+                    print(f"[SourceSafetyGate] [{idx:02d}] DROP | reason={reason} | title={source.get('title', '')[:80]} | url={source.get('url', '')}")
+                continue
+            accepted_web.append(source)
+            canonical = self._canonical_url(source.get("url", ""))
+            if canonical:
+                accepted_urls.add(canonical)
+
+        accepted_rag: list[RagSource] = []
+        for source in rag_sources:
+            canonical = self._canonical_url(source.get("url", ""))
+            if not web_sources or (canonical and canonical in accepted_urls):
+                accepted_rag.append(source)
+        return accepted_web, accepted_rag
+
     def _quality_audit(
         self,
         question: str,
@@ -296,10 +722,21 @@ class WebRetriever:
 
         accepted_web_sources: list[WebSource] = []
         accepted_urls: set[str] = set()
+        seen_urls: set[str] = set()
         for idx, source in enumerate(web_sources, 1):
             title = source.get("title", "")
             url = source.get("url", "")
             description = source.get("description", source.get("text", ""))
+            canonical_url = self._canonical_url(url)
+            if canonical_url and canonical_url in seen_urls:
+                if quality_log:
+                    print(f"[QualityGate] [{idx:02d}] DROP | reason=duplicate_url | url={url}")
+                continue
+            safety_reason = self._source_safety_reason(question, source)
+            if safety_reason:
+                if quality_log:
+                    print(f"[QualityGate] [{idx:02d}] DROP | reason={safety_reason} | title={title[:80]} | url={url}")
+                continue
             relevance = self._relevance_score(question, title, description, url)
             trust = self._domain_trust(url)
             is_ok = relevance >= min_relevance and trust >= min_trust
@@ -313,13 +750,14 @@ class WebRetriever:
 
             if is_ok:
                 accepted_web_sources.append(source)
-                if url:
-                    accepted_urls.add(url)
+                if canonical_url:
+                    accepted_urls.add(canonical_url)
+                    seen_urls.add(canonical_url)
 
         accepted_rag_sources: list[RagSource] = []
         for source in rag_sources:
-            source_url = source.get("url", "")
-            if not accepted_urls or not source_url or source_url in accepted_urls:
+            source_url = self._canonical_url(source.get("url", ""))
+            if (not web_sources and not accepted_urls) or (source_url and source_url in accepted_urls):
                 accepted_rag_sources.append(source)
 
         if quality_log:
@@ -327,10 +765,18 @@ class WebRetriever:
                 f"[QualityGate] Result -> web_sources={len(accepted_web_sources)}/{len(web_sources)}, "
                 f"rag_sources={len(accepted_rag_sources)}/{len(rag_sources)}"
             )
+        _debug_source_list("WEB_ACCEPTED_SOURCES", accepted_web_sources)
+        _debug_source_list("RAG_ACCEPTED_CHUNKS", accepted_rag_sources)
         return accepted_web_sources, accepted_rag_sources
 
     async def retrive(self, question: str, params: GenerationParams) -> tuple[list[WebSource], list[RagSource]]:
         enable_quality_gate = params.get("enable_quality_gate", False)
+        rich_media_enabled = bool(params.get("include_pdf") or params.get("include_image"))
+        if rich_media_enabled and params.get("quality_force_for_rich_media", True):
+            if not enable_quality_gate:
+                print("[QualityGate] Forced ON because include_pdf/include_image is enabled")
+            enable_quality_gate = True
+            params["enable_quality_gate"] = True
         quality_log = params.get("quality_log", enable_quality_gate)
         params["quality_log"] = quality_log
 
@@ -363,10 +809,14 @@ class WebRetriever:
                 f"[QualityGate] Raw retrieve -> web_sources={len(web_sources)}, "
                 f"rag_sources={len(rag_sources)}"
             )
+        _debug_source_list("WEB_RAW_SOURCES", web_sources)
+        _debug_source_list("RAG_RAW_CHUNKS", rag_sources)
 
         if not enable_quality_gate:
             if quality_log:
-                print("[QualityGate] Disabled -> return raw web search output")
+                print("[QualityGate] Disabled -> run SourceSafetyGate only")
+            if params.get("source_safety_filter", True):
+                return self._source_safety_filter(question, web_sources, rag_sources, params)
             return web_sources, rag_sources
 
         return self._quality_audit(question, web_sources, rag_sources, params)
@@ -403,23 +853,71 @@ class RouterRetriever:
     async def retrieve(self, question: str, params: GenerationParams) -> tuple[list[WebSource], list[RagSource]]:
         use_websearch = params.get("use_websearch", False) and params.get("max_query", 0) > 0 and params.get("k_docs", 0) > 0 and params.get("k_pages", 0) > 0
         use_localdb = params.get("use_localdb", False)
+        _debug_block(
+            "ROUTER_SOURCE_FLAGS",
+            _debug_json({
+                "question": question,
+                "use_localdb": use_localdb,
+                "use_websearch": use_websearch,
+                "auto_source": params.get("auto_source"),
+                "max_query": params.get("max_query"),
+                "k_docs": params.get("k_docs"),
+                "k_pages": params.get("k_pages"),
+            }),
+            limit=0,
+        )
         if use_websearch:
             self._auto_apply_time_filter(question, params)
         if use_websearch and use_localdb:
             local_queries = await self.router.route(question, params)
+            hybrid_retrieval = bool(params.get("hybrid_retrieval", False))
             if len(local_queries) > 0:
-                return self.local_retriever.retrieve(local_queries)
+                _debug_block(
+                    "ROUTER_SOURCE_DECISION",
+                    _debug_json({"mode": "hybrid" if hybrid_retrieval else "local_db", "reason": "router returned local queries", "local_queries": local_queries}),
+                    limit=0,
+                )
+                local_web, local_rag = self.local_retriever.retrieve(local_queries)
+                if hybrid_retrieval:
+                    web_web, web_rag = await self.web_retriever.retrive(question, params)
+                    return local_web + web_web, local_rag + web_rag
+                return local_web, local_rag
             else:
+                _debug_block(
+                    "ROUTER_SOURCE_DECISION",
+                    _debug_json({"mode": "web", "reason": "router returned no local queries"}),
+                    limit=0,
+                )
                 return await self.web_retriever.retrive(question, params)
         elif use_localdb:
             local_queries = await self.router.route(question, params)
             if len(local_queries) > 0:
+                _debug_block(
+                    "ROUTER_SOURCE_DECISION",
+                    _debug_json({"mode": "local_db", "reason": "local only, router returned queries", "local_queries": local_queries}),
+                    limit=0,
+                )
                 return self.local_retriever.retrieve(local_queries)
             else:
+                _debug_block(
+                    "ROUTER_SOURCE_DECISION",
+                    _debug_json({"mode": "none", "reason": "local only, router returned no local queries"}),
+                    limit=0,
+                )
                 return [], []
         elif use_websearch:
+            _debug_block(
+                "ROUTER_SOURCE_DECISION",
+                _debug_json({"mode": "web", "reason": "web only"}),
+                limit=0,
+            )
             return await self.web_retriever.retrive(question, params)
         else:
+            _debug_block(
+                "ROUTER_SOURCE_DECISION",
+                _debug_json({"mode": "none", "reason": "both local and web disabled"}),
+                limit=0,
+            )
             return [], []
         
 import openai
@@ -430,6 +928,25 @@ class APIModelCore:
         self.logger = CmdLogger("Model")
     async def call(self, call_type: CallType, instruction: str, prompt: str, params: GenerationParams) -> AsyncGenerator[str, None]:
         print(f"[API] {call_type} | Instruction length: {len(instruction)} | Prompt length: {len(prompt)} | kwargs: {params.get('kwargs')}")
+        if _debug_trace_enabled():
+            prompt_limit = _debug_int_env("BOT_DEBUG_PROMPT_CHARS", 20000)
+            _debug_block(
+                f"LLM_CALL {call_type}",
+                _debug_json({
+                    "call_type": str(call_type),
+                    "model_id": params.get("model_id"),
+                    "max_tokens": params.get("max_tokens"),
+                    "temperature": params.get("temperature"),
+                    "top_p": params.get("top_p"),
+                    "top_k": params.get("top_k"),
+                    "params": dict(params),
+                    "instruction_chars": len(instruction or ""),
+                    "prompt_chars": len(prompt or ""),
+                }),
+                limit=0,
+            )
+            _debug_block(f"LLM_SYSTEM_PROMPT {call_type}", instruction, limit=prompt_limit)
+            _debug_block(f"LLM_USER_PROMPT {call_type}", prompt, limit=prompt_limit)
         model_id = params["model_id"]
         if "gpt" in model_id:
             while True:
@@ -510,6 +1027,7 @@ class APIModel(APIModelCore):
             traceback.print_exc()
             return None
         self.logger.log(f"[Decomposer raw] {text[:400]}...")
+        _debug_block("DECOMPOSER_RAW_OUTPUT", text, limit=_debug_int_env("BOT_DEBUG_PROMPT_CHARS", 20000))
         plan = parse_plan_json(text, max_sub=5)
         if plan is None:
             self.logger.log("[Decomposer] parse failed → single-hop")
@@ -549,9 +1067,32 @@ class APIModel(APIModelCore):
             chunk_max_chars = 500
             run_params = FACT_EXTRACTOR_PARAMS
         context = "\n\n".join(
-            f"- {c.get('text', '')[:chunk_max_chars]}" for c in top
+            (
+                f"### Source {idx}: {c.get('title', '')} | {c.get('url', '')}\n"
+                f"{_select_relevant_evidence_text(sub_q_text, c.get('text', '') or '', chunk_max_chars)}"
+            )
+            for idx, c in enumerate(top, 1)
         )
         prompt = template.format(question=sub_q_text, context=context)
+        _debug_block(
+            "FACT_EXTRACTOR_INPUT",
+            _debug_json({
+                "question": sub_q_text,
+                "evidence_type": evidence_type,
+                "source_count": len(rag_sources),
+                "selected_count": len(top),
+                "selected_sources": [
+                    {
+                        "title": c.get("title", ""),
+                        "url": c.get("url", ""),
+                        "chunk_index": c.get("chunk_index"),
+                        "text_chars": len(c.get("text", "") or ""),
+                    }
+                    for c in top
+                ],
+            }),
+            limit=0,
+        )
         copy_params = copy.deepcopy(params)
         copy_params.update(run_params)  # type: ignore
         text = ""
@@ -566,12 +1107,15 @@ class APIModel(APIModelCore):
         except Exception:
             traceback.print_exc()
             return "", 0.0
+        _debug_block("FACT_EXTRACTOR_RAW_OUTPUT", text, limit=_debug_int_env("BOT_DEBUG_PROMPT_CHARS", 20000))
         try:
             result = json.loads(extract_json(text))
             answer = str(result.get("answer", "")).strip()
             conf = float(result.get("confidence", 0.0))
+            _debug_block("FACT_EXTRACTOR_PARSED", _debug_json({"answer": answer, "confidence": conf}), limit=0)
             return answer, conf
         except Exception:
+            _debug_block("FACT_EXTRACTOR_PARSE_FAILED", text, limit=_debug_int_env("BOT_DEBUG_PROMPT_CHARS", 20000))
             return "", 0.0
 
     async def reason(
@@ -600,6 +1144,17 @@ class APIModel(APIModelCore):
             sub_question=sub_q_text,
             evidence=joined,
         )
+        _debug_block(
+            "REASONER_INPUT",
+            _debug_json({
+                "original_question": original_question,
+                "sub_question": sub_q_text,
+                "evidence_blocks": len(evidence_blocks),
+                "evidence_chars": len(joined),
+            }),
+            limit=0,
+        )
+        _debug_block("REASONER_EVIDENCE", joined, limit=_debug_int_env("BOT_DEBUG_PROMPT_CHARS", 20000))
         copy_params = copy.deepcopy(params)
         copy_params.update(REASONER_PARAMS)  # type: ignore
         text = ""
@@ -614,16 +1169,16 @@ class APIModel(APIModelCore):
         except Exception:
             traceback.print_exc()
             return "", 0.0
+        _debug_block("REASONER_RAW_OUTPUT", text, limit=_debug_int_env("BOT_DEBUG_PROMPT_CHARS", 20000))
         try:
             result = json.loads(extract_json(text))
             answer = str(result.get("answer", "")).strip()
             conf = float(result.get("confidence", 0.0))
+            _debug_block("REASONER_PARSED", _debug_json({"answer": answer, "confidence": conf}), limit=0)
             return answer, conf
         except Exception:
             # Một số trường hợp LLM không trả JSON: dùng raw text như answer.
-            stripped = (text or "").strip()
-            if stripped:
-                return stripped[:1500], 0.5
+            _debug_block("REASONER_PARSE_FAILED", text, limit=_debug_int_env("BOT_DEBUG_PROMPT_CHARS", 20000))
             return "", 0.0
 
     async def route(self, question: str, params: GenerationParams) -> list[dict]:
@@ -640,7 +1195,9 @@ class APIModel(APIModelCore):
             text += chunk
         try:
             self.logger.log(text)
+            _debug_block("ROUTER_RAW_OUTPUT", text, limit=_debug_int_env("BOT_DEBUG_PROMPT_CHARS", 20000))
             result = json.loads(extract_json(text))
+            _debug_block("ROUTER_PARSED", _debug_json(result), limit=0)
             return result
         except:
             traceback.print_exc()
@@ -716,7 +1273,9 @@ class APIModel(APIModelCore):
             text += chunk
         try:
             self.logger.log(text)
+            _debug_block("KEYWORDS_RAW_OUTPUT", text, limit=_debug_int_env("BOT_DEBUG_PROMPT_CHARS", 20000))
             result: list[KeywordInfo] = json.loads(extract_json(text))
+            _debug_block("KEYWORDS_PARSED", _debug_json(result), limit=0)
             for item in result:
                 self.logger.log(item)
             return result
@@ -912,6 +1471,15 @@ class CustomQA:
         stream_id: str,
         params: GenerationParams
     ) -> tuple[str, ModelPreOutput]:
+        _debug_block(
+            "REQUEST_START",
+            _debug_json({
+                "stream_id": stream_id,
+                "question": question,
+                "params": dict(params),
+            }),
+            limit=0,
+        )
         # Multi-hop (opt-in). Khi tắt hoặc decomposer fail → Orchestrator tự fallback single-hop.
         web_sources, rag_sources, multi_hop_trace = await self.multi_hop.retrieve(
             question, params
@@ -925,6 +1493,40 @@ class CustomQA:
                 r = multi_hop_trace.per_sub_q.get(sq.id)
                 fact_preview = (r.fact[:80] + "...") if (r and r.fact) else "(no fact)"
                 print(f"  SQ#{sq.id} [{sq.resolver}] → {fact_preview}")
+        if multi_hop_trace is not None:
+            _debug_block(
+                "MULTI_HOP_TRACE",
+                _debug_json({
+                    "hop_count": multi_hop_trace.hop_count,
+                    "sub_questions": [
+                        {
+                            "id": sq.id,
+                            "text": sq.text,
+                            "depends_on": sq.depends_on,
+                            "resolver": sq.resolver,
+                            "evidence_type": sq.evidence_type,
+                            "rewritten_text": (multi_hop_trace.per_sub_q.get(sq.id).rewritten_text if multi_hop_trace.per_sub_q.get(sq.id) else ""),
+                            "fact": (multi_hop_trace.per_sub_q.get(sq.id).fact if multi_hop_trace.per_sub_q.get(sq.id) else ""),
+                            "confidence": (multi_hop_trace.per_sub_q.get(sq.id).confidence if multi_hop_trace.per_sub_q.get(sq.id) else 0.0),
+                            "web_count": (len(multi_hop_trace.per_sub_q.get(sq.id).web_sources) if multi_hop_trace.per_sub_q.get(sq.id) else 0),
+                            "rag_count": (len(multi_hop_trace.per_sub_q.get(sq.id).rag_sources) if multi_hop_trace.per_sub_q.get(sq.id) else 0),
+                        }
+                        for sq in multi_hop_trace.plan.sub_questions
+                    ],
+                }),
+                limit=0,
+            )
+        else:
+            _debug_block("MULTI_HOP_TRACE", "trace=None (single-hop fallback or disabled)")
+        rag_sources = _augment_rag_with_web_table_evidence(
+            question,
+            web_sources,
+            rag_sources,
+            max_sources=int(params.get("reader_table_rescue_max_sources", 2)),
+            max_chars=int(params.get("reader_table_rescue_max_chars", 6000)),
+        )
+        _debug_source_list("FINAL_WEB_SOURCES", web_sources)
+        _debug_source_list("FINAL_RAG_CHUNKS", rag_sources)
         print("\n" + "=" * 80)
         print(f"[RAG CHUNKS] Total {len(rag_sources)} chunks selected for reader:")
         for idx, chunk in enumerate(rag_sources, 1):
@@ -969,6 +1571,9 @@ class CustomQA:
         print("-" * 80)
         print(prompt)
         print("=" * 80 + "\n")
+        _debug_block("READER_SYSTEM_PROMPT", READER_UNTRAINED_INSTRUCTION + READER_UNTRAINED_PREFIX, limit=_debug_int_env("BOT_DEBUG_PROMPT_CHARS", 20000))
+        _debug_block("READER_CONTEXT", context, limit=_debug_int_env("BOT_DEBUG_PROMPT_CHARS", 20000))
+        _debug_block("READER_FINAL_PROMPT", prompt, limit=_debug_int_env("BOT_DEBUG_PROMPT_CHARS", 20000))
         self.logger.start()
         pre_output: ModelPreOutput = {
             "generation_params": params,
@@ -998,8 +1603,28 @@ async def main():
             params = request["params"]
             params.setdefault("enable_quality_gate", False)
             params.setdefault("quality_log", params["enable_quality_gate"])
+            params.setdefault("quality_min_score", 0.58)
             params.setdefault("quality_min_relevance", 0.25)
             params.setdefault("quality_min_trust", 0.50)
+            params.setdefault("quality_strict_mode", True)
+            params.setdefault("quality_max_docs", params.get("k_pages", 3))
+            params.setdefault("source_safety_filter", True)
+            params.setdefault("quality_force_for_rich_media", True)
+            params.setdefault("hybrid_retrieval", True)
+            params.setdefault("auto_multi_hop", True)
+            params.setdefault("multi_hop_complexity_threshold", 2)
+            params.setdefault("reader_table_rescue_max_sources", 2)
+            params.setdefault("reader_table_rescue_max_chars", 6000)
+            _debug_block(
+                "SERVER_REQUEST",
+                _debug_json({
+                    "stream_id": stream_id,
+                    "text": request.get("text"),
+                    "params": dict(params),
+                    "forward_kwargs": request.get("forward_kwargs"),
+                }),
+                limit=0,
+            )
             print(params)
             print(
                 f"[QualityGate] enable_quality_gate={params['enable_quality_gate']} | "
@@ -1032,6 +1657,26 @@ async def main():
                     "forward_kwargs": request["forward_kwargs"],
                     "model_output": model_output
                 }
+                _debug_block(
+                    "FINAL_RESPONSE",
+                    _debug_json({
+                        "stream_id": stream_id,
+                        "response_chars": len(total),
+                        "response": total,
+                        "rag_sources": len(pre_output.get("rag_sources", [])),
+                        "web_sources": len(pre_output.get("web_sources", [])),
+                    }),
+                    limit=0,
+                )
+                _debug_block(
+                    "STORE_CHAT_DATA_SUMMARY",
+                    _debug_json({
+                        "stream_id": stream_id,
+                        "forward_kwargs": request.get("forward_kwargs"),
+                        "model_output_keys": list(model_output.keys()),
+                    }),
+                    limit=0,
+                )
                 await self.store(data)
                 
     server_model = ServerModelImplement()

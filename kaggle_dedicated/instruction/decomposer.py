@@ -25,6 +25,13 @@ Phân tích câu hỏi người dùng và trả ra DAG các sub-question để p
 5. **LIMIT**: tối đa 5 sub-question. Nếu câu hỏi đơn giản → đúng 1 sub-question với depends_on=[].
 6. **KHÔNG được tạo chu trình phụ thuộc.**
 
+7. **Bat buoc final operation**:
+   - Neu cau hoi yeu cau so sanh/loc/xep hang/top N/goi y theo dieu kien, PHAI co sub-question cuoi `resolver="reasoning"` phu thuoc vao tat ca sub-q du lieu lien quan.
+   - Sub-q final phai neu ro phep toan: sort theo diem, loc diem > X, loc hoc phi < Y, giao cac danh sach, so sanh A/B.
+8. **Coverage cho list/ranking/filter**:
+   - Neu can danh sach nhieu truong hoac top N, uu tien `resolver="hybrid"` cho buoc thu thap du lieu de local DB va web bo sung nhau.
+   - Khong chon vai truong theo phan doan; tach buoc lay candidates va buoc reasoning sort/filter.
+
 # ĐỊNH DẠNG
 Trả về CHỈ 1 JSON object (không thêm chữ nào khác):
 ```json
@@ -207,3 +214,32 @@ Trả về JSON:
 {{"answer": "<kết quả chi tiết, có thể là list nhiều dòng phân cách bằng ' ; '>", "items": [{{"name": "...", "value": "..."}}, ...], "confidence": <float 0.0-1.0>, "explanation": "<1-2 câu giải thích cách lọc/tính>"}}
 ```
 Chỉ JSON, không giải thích thêm bên ngoài."""
+
+
+# Runtime prompt hardening. Kept as append-only text so existing templates stay compatible.
+DECOMPOSER_PREFIX += """
+
+# BAT BUOC CHO CAU HOI SO SANH / LOC / XEP HANG
+- So sanh/loc/xep hang/top N/goi y theo dieu kien phai co sub-question cuoi `resolver="reasoning"`.
+- Buoc reasoning cuoi phai depends_on TAT CA sub-question du lieu can dung.
+- Neu can top N hoac danh sach nhieu truong, dung `resolver="hybrid"` cho buoc thu thap candidates, khong tu doan san danh sach truong.
+"""
+
+LIST_FACT_EXTRACTOR_INSTRUCTION += (
+    " Khi doc bang, phai chon dung DONG theo ten nganh/truong va dung COT theo nam duoc hoi. "
+    "Khong lay gia tri o dong dau tien cua bang neu dong do khong phai nganh duoc hoi."
+)
+
+REASONER_INSTRUCTION += (
+    " Neu output khong phai JSON hop le, cau tra loi se bi loai bo. "
+    "Khong lap lai mot gia tri nhieu lan. Khong dung gia tri diem chuan thay cho hoc phi."
+)
+
+REASONER_TEMPLATE += """
+
+# KIEM TRA BAT BUOC TRUOC KHI TRA JSON
+- Moi item trong answer phai co du bang chung tu evidence. Neu thieu hoc phi/diem cua mot truong, ghi ro `unknown`, khong suy doan.
+- Voi sort/ranking: sap xep bang so thuc giam/tang dung yeu cau, khong tron thang diem khac nhau neu khong ghi ro.
+- Voi filter: chi giu item thoa TAT CA dieu kien.
+- Output phai la JSON object hop le, khong boc trong markdown fence.
+"""

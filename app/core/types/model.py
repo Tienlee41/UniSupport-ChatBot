@@ -42,6 +42,14 @@ class GenerationParams(TypedDict):
     include_image: NotRequired[bool]
     merge_table: NotRequired[bool]
     merge_neighbor: NotRequired[bool]
+    # Document quality gate (web retrieval)
+    enable_quality_gate: NotRequired[bool]
+    quality_log: NotRequired[bool]
+    quality_min_score: NotRequired[float]
+    quality_min_relevance: NotRequired[float]
+    quality_min_trust: NotRequired[float]
+    quality_strict_mode: NotRequired[bool]
+    quality_max_docs: NotRequired[int]
     # Sampling
     max_tokens: NotRequired[int]
     temperature: NotRequired[float]

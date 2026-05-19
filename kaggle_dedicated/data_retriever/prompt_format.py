@@ -40,10 +40,11 @@ class SourceFormat:
                 else:
                     texts.append(text)
             
-            # Add texts first (context), then tables (data)
-            for t in texts:
-                result.append(t)
+            # Tables usually contain the exact admissions facts, so keep them
+            # before surrounding prose in the reader context.
             for t in tables:
+                result.append(t)
+            for t in texts:
                 result.append(t)
             
             if self.use_separators:

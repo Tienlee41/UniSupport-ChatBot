@@ -114,8 +114,7 @@ class DataRetrieverPipeline:
         table_chunks: list[RagSource] = []
         existing_indexes = {source["chunk_index"] for source in retrieved_sources}
         for source in total_sources:
-            text = source.get("text", "")
-            if "[BẢNG]" in text or text.count("|") >= 3:
+            if self._is_table_chunk(source):
                 if source["chunk_index"] not in existing_indexes:
                     table_chunks.append(source)
             if len(table_chunks) >= max_additional:
@@ -123,6 +122,30 @@ class DataRetrieverPipeline:
         if table_chunks:
             self.logger.log(f"[Prioritize] Added {len(table_chunks)} table chunks before retrieval output")
         return table_chunks + retrieved_sources
+
+    def _is_table_chunk(self, source: RagSource) -> bool:
+        text = source.get("text", "") or ""
+        return "[BANG]" in text or "[BẢNG]" in text or text.count("|") >= 3
+
+    def _restore_protected_table_chunks(
+        self,
+        before_rerank: list[RagSource],
+        after_rerank: list[RagSource],
+        max_restore: int = 3,
+    ) -> list[RagSource]:
+        kept = {(source.get("url", ""), source.get("chunk_index")) for source in after_rerank}
+        restored: list[RagSource] = []
+        for source in before_rerank:
+            key = (source.get("url", ""), source.get("chunk_index"))
+            if key in kept or not self._is_table_chunk(source):
+                continue
+            restored.append(source)
+            kept.add(key)
+            if len(restored) >= max_restore:
+                break
+        if restored:
+            self.logger.log(f"[Prioritize] Restored {len(restored)} table chunks after chunk rerank")
+        return restored + after_rerank
     
     async def start(self):
         self._aio_session = aiohttp.ClientSession()
@@ -439,8 +462,10 @@ class DataRetrieverPipeline:
             relavent = self._prioritize_table_chunks(rag_sources, relavent)
             relavent = self._merger.merge(rag_sources, relavent, merge_table, merge_neighbor)
             if chunk_rerank_enabled and relavent:
+                before_rerank = relavent
                 # For web: use relative threshold (threshold = max_score * chunk_score_threshold)
                 relavent = self._chunk_ranker.rerank_chunks(relavent, query, relative_threshold=chunk_score_threshold, use_relative_threshold=True)
+                relavent = self._restore_protected_table_chunks(before_rerank, relavent)
             return relavent
         
         # Run all in parallel using thread pool
@@ -577,10 +602,13 @@ class DataRetrieverPipeline:
         for web_source, page_k_doc in zip(web_sources, page_k_docs):
             rag_sources = self._splitter.split(web_source)
             relavent_sources = self._rag.retrieve(rag_sources, query, page_k_doc)
+            relavent_sources = self._prioritize_table_chunks(rag_sources, relavent_sources)
             relavent_sources = self._merger.merge(rag_sources, relavent_sources, merge_table, merge_neighbor)
             if chunk_rerank_enabled:
+                before_rerank = relavent_sources
                 # For web: use relative threshold (threshold = max_score * chunk_score_threshold)
                 relavent_sources = self._chunk_ranker.rerank_chunks(relavent_sources, query, relative_threshold=chunk_score_threshold, use_relative_threshold=True)
+                relavent_sources = self._restore_protected_table_chunks(before_rerank, relavent_sources)
             rag_sources = relavent_sources
         
         self.logger.end("RAG")

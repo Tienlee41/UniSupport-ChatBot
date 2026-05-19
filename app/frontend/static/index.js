@@ -62,6 +62,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const websearchCheckbox = document.getElementById('websearch-checkbox');
     const localdbCheckbox = document.getElementById('localdb-checkbox');
     const autoSourceCheckbox = document.getElementById('auto-source-checkbox');
+    const qualityGateCheckbox = document.getElementById('quality-gate-checkbox');
     const maxQueryInput = document.getElementById('max-query');
     const queryScoreThreshold = document.getElementById('query-score-threshold');
     const queryScoreValue = document.getElementById('query-score-value');
@@ -677,6 +678,7 @@ document.addEventListener('DOMContentLoaded', function() {
         let usewebsearch = websearchCheckbox.checked;
         let uselocaldb = localdbCheckbox.checked;
         const autoSource = autoSourceCheckbox ? autoSourceCheckbox.checked : true;
+        const enableQualityGate = qualityGateCheckbox ? qualityGateCheckbox.checked : false;
 
         // Validate k_docs value before sending
         let kDocsValue = parseInt(searchDocsCount.value);
@@ -791,6 +793,8 @@ document.addEventListener('DOMContentLoaded', function() {
             merge_table: mergeTable,
             merge_neighbor: mergeNeighbor,
             llm_rerank: llmrerank,
+            enable_quality_gate: enableQualityGate,
+            quality_log: enableQualityGate,
         };
         
         // Add time parameters if specified

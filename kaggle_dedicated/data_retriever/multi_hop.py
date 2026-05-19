@@ -20,6 +20,7 @@ import copy
 import json
 import re
 import traceback
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Awaitable, Callable, Optional, Protocol
 
@@ -75,6 +76,8 @@ class MultiHopTrace:
 @dataclass
 class MultiHopConfig:
     enabled: bool = False
+    auto_detect_complexity: bool = True
+    complexity_threshold: int = 2
     max_hops: int = 3
     max_sub_questions: int = 5
     enable_fact_extraction: bool = True
@@ -94,6 +97,8 @@ class MultiHopConfig:
     reasoning_max_evidence_chunks_per_dep: int = 6
     # Cắt chunk text khi feed reasoner để kiểm soát prompt length.
     reasoning_max_chars_per_chunk: int = 1200
+    reasoning_confidence_threshold: float = 0.65
+    allow_reasoning_pass_through_fallback: bool = False
 
     # ── P2: skip bridge entity khi dep là list/comparison ──
     # Tránh "(tức 18 trường: A; B; C…)" làm noise cho keyword extractor.
@@ -337,9 +342,219 @@ def filter_chunks_by_major(
     return filtered
 
 
+def _strip_accents_for_match(text: str) -> str:
+    normalized = unicodedata.normalize("NFD", text or "")
+    without_marks = "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
+    return without_marks.replace("đ", "d").replace("Đ", "D")
+
+
+def _normalize_for_match(text: str) -> str:
+    return re.sub(r"\s+", " ", _strip_accents_for_match(text).lower()).strip()
+
+
+def _term_in_text(term: str, text: str) -> bool:
+    term_norm = _normalize_for_match(term)
+    if not term_norm:
+        return False
+    if re.fullmatch(r"[a-z0-9\s.+/#&-]+", term_norm):
+        return re.search(rf"(?<!\w){re.escape(term_norm)}(?!\w)", text) is not None
+    return term_norm in text
+
+
+def _query_focus_terms(question: str) -> list[str]:
+    text = _normalize_for_match(question)
+    terms: list[str] = []
+    signal_terms = [
+        "tuyen sinh", "de an tuyen sinh", "thong tin tuyen sinh",
+        "diem chuan", "diem trung tuyen", "diem xet tuyen", "diem san",
+        "diem nhan ho so", "nguong dau vao", "nguong dam bao chat luong",
+        "hoc phi", "le phi", "hoc bong", "mien giam", "tin dung sinh vien",
+        "chi tieu", "ma nganh", "ten nganh", "to hop mon", "khoi thi",
+        "phuong thuc xet tuyen", "xet tuyen", "xet tuyen som", "xet tuyen ket hop",
+        "tuyen thang", "uu tien xet tuyen", "nguyen vong", "ho so",
+        "thoi gian dang ky", "han dang ky", "lich tuyen sinh", "nhap hoc",
+        "xac nhan nhap hoc", "cong bo ket qua",
+        "hoc ba", "thi thpt", "tot nghiep thpt", "danh gia nang luc",
+        "danh gia tu duy", "dgnl", "dgtd", "tsa", "sat", "ielts", "toefl",
+        "chuong trinh dao tao", "chuan dau ra", "thoi gian dao tao",
+        "bang cap", "cu nhan", "ky su", "chat luong cao", "tien tien",
+        "lien ket quoc te", "song bang",
+        "ky tuc xa", "noi tru", "ngoai tru", "co so dao tao", "dia diem hoc",
+        "campus", "co so vat chat",
+        "co hoi viec lam", "viec lam", "muc luong", "thuc tap",
+        "doanh nghiep", "dau ra",
+    ]
+    terms.extend(term for term in signal_terms if _term_in_text(term, text))
+
+    phrase_patterns = [
+        r"\b(?:nganh|nhom nganh|linh vuc|chuyen nganh|chuong trinh|chuong trinh dao tao|khoa)\s+([a-z0-9][a-z0-9\s/&+.\-]{2,80})",
+        r"\b(?:truong|dai hoc|hoc vien)\s+([a-z0-9][a-z0-9\s/&+.\-]{2,80})",
+    ]
+    stop_tail = re.compile(
+        r"\b(?:nam|tai|o|cua|cac|nhung|co|khong|la|bao nhieu|cao|thap|nhat|kem|voi|va|so sanh|xep hang|top|theo)\b.*$"
+    )
+    for pattern in phrase_patterns:
+        for match in re.finditer(pattern, text):
+            phrase = stop_tail.sub("", match.group(1)).strip(" ,.;:-")
+            if len(phrase) >= 3:
+                terms.append(phrase)
+
+    for abbr in re.findall(r"\b[A-Z0-9][A-Z0-9+/&.-]{1,8}\b", question or ""):
+        terms.append(_normalize_for_match(abbr))
+
+    domain_aliases = {
+        "cong nghe thong tin": ["cntt", "it", "information technology"],
+        "khoa hoc may tinh": ["khmt", "computer science"],
+        "ky thuat may tinh": ["computer engineering"],
+        "tri tue nhan tao": ["ai", "artificial intelligence"],
+        "khoa hoc du lieu": ["khdl", "data science"],
+        "an toan thong tin": ["attt", "information security"],
+        "an ninh mang": ["cyber security", "cybersecurity"],
+        "ky thuat phan mem": ["software engineering", "ktpm"],
+        "he thong thong tin": ["httt", "information systems"],
+        "mang may tinh": ["computer network", "networking"],
+        "thuong mai dien tu": ["tmdt", "ecommerce", "e-commerce"],
+        "dien tu vien thong": ["dtvt", "electronics and telecommunications"],
+        "ky thuat dien": ["dien dien tu", "electrical engineering"],
+        "dieu khien va tu dong hoa": ["automation", "tu dong hoa"],
+        "co dien tu": ["mechatronics"],
+        "ky thuat co khi": ["co khi", "mechanical engineering"],
+        "ky thuat o to": ["cong nghe ky thuat o to", "automotive engineering"],
+        "xay dung": ["ky thuat xay dung", "civil engineering"],
+        "kien truc": ["architecture"],
+        "ky thuat hoa hoc": ["hoa hoc", "chemical engineering"],
+        "cong nghe thuc pham": ["food technology"],
+        "ky thuat moi truong": ["moi truong", "environmental engineering"],
+        "logistics": ["logistics va quan ly chuoi cung ung", "supply chain"],
+        "quan tri kinh doanh": ["qtkd", "business administration"],
+        "marketing": ["digital marketing"],
+        "kinh doanh quoc te": ["international business"],
+        "tai chinh ngan hang": ["finance banking", "ngan hang"],
+        "ke toan": ["accounting"],
+        "kiem toan": ["auditing"],
+        "ngon ngu anh": ["english language"],
+        "ngon ngu trung": ["tieng trung", "chinese language"],
+        "ngon ngu nhat": ["tieng nhat", "japanese language"],
+        "luat": ["law"],
+        "luat kinh te": ["economic law"],
+        "quan he quoc te": ["international relations"],
+        "bao chi": ["journalism"],
+        "truyen thong da phuong tien": ["multimedia communication"],
+        "tam ly hoc": ["psychology"],
+        "su pham": ["giao duc", "teacher education"],
+        "y khoa": ["medicine", "bac si da khoa"],
+        "duoc hoc": ["pharmacy"],
+        "dieu duong": ["nursing"],
+        "rang ham mat": ["dentistry"],
+        "y hoc co truyen": ["traditional medicine"],
+        "xet nghiem y hoc": ["medical laboratory"],
+        "thu y": ["veterinary"],
+        "nong nghiep": ["agriculture"],
+        "thuy san": ["aquaculture"],
+        "thiet ke do hoa": ["graphic design"],
+        "my thuat": ["fine arts"],
+    }
+    for canonical, aliases in domain_aliases.items():
+        if _term_in_text(canonical, text) or any(_term_in_text(alias, text) for alias in aliases):
+            terms.extend([canonical, *aliases])
+    terms.extend(re.findall(r"\b(?:19|20)\d{2}\b", question or ""))
+    seen: set[str] = set()
+    out: list[str] = []
+    for term in terms:
+        norm = _normalize_for_match(term)
+        if norm and norm not in seen:
+            seen.add(norm)
+            out.append(norm)
+    return out
+
+
+def _select_relevant_text(question: str, text: str, max_chars: int) -> str:
+    if not text or max_chars <= 0 or len(text) <= max_chars:
+        return text or ""
+    focus_terms = _query_focus_terms(question)
+    q_tokens = set(re.findall(r"\w+", _normalize_for_match(question), flags=re.UNICODE))
+    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+    if not lines:
+        return text[:max_chars]
+    selected_idx: set[int] = set()
+    scored: list[tuple[int, int]] = []
+    for idx, line in enumerate(lines):
+        norm = _normalize_for_match(line)
+        score = 0
+        if "|" in line and any(h in norm for h in [
+            "ma nganh", "ten nganh", "2024", "2025", "hoc phi", "diem chuan",
+            "diem trung tuyen", "diem san", "chi tieu", "to hop", "khoi thi",
+            "phuong thuc", "xet tuyen", "hoc bong", "ma xet tuyen",
+        ]):
+            score += 4
+            selected_idx.add(idx)
+            if idx + 1 < len(lines):
+                selected_idx.add(idx + 1)
+        score += sum(5 for term in focus_terms if term and term in norm)
+        line_tokens = set(re.findall(r"\w+", norm, flags=re.UNICODE))
+        score += min(5, len(q_tokens.intersection(line_tokens)))
+        if score > 0:
+            scored.append((score, idx))
+    for _, idx in sorted(scored, key=lambda item: (-item[0], item[1])):
+        for j in range(max(0, idx - 1), min(len(lines), idx + 2)):
+            selected_idx.add(j)
+        candidate = "\n".join(lines[j] for j in sorted(selected_idx))
+        if len(candidate) >= max_chars:
+            break
+    selected = "\n".join(lines[j] for j in sorted(selected_idx))
+    if not selected.strip():
+        selected = text[:max_chars]
+    return selected[:max_chars]
+
+
 # ──────────────────────────────────────────────────────────────────
 # MultiHopOrchestrator
 # ──────────────────────────────────────────────────────────────────
+
+def _multi_hop_complexity_score(question: str) -> tuple[int, list[str]]:
+    """Fast heuristic gate: simple one-fact questions should stay single-hop."""
+    text = _normalize_for_match(question)
+    reasons: list[str] = []
+    score = 0
+
+    strong_patterns = [
+        (r"\btop\s*\d+\b|\b\d+\s+truong\b", "top/list_n"),
+        (r"\b(xep hang|ranking|sap xep)\b", "ranking"),
+        (r"\b(so sanh|khac nhau|giong nhau|hon|kem hon|versus| vs )\b", "comparison"),
+        (r"\b(cao nhat|thap nhat|tot nhat|phu hop nhat|nen chon|goi y|de xuat)\b", "selection"),
+        (r"\b(loc|tim cac|nhung truong|cac truong|danh sach|truong nao)\b", "list/filter"),
+        (r"\b(vua .+ vua|dong thoi|kem theo|kem)\b", "compound_requirement"),
+        (r"\b(trong danh sach tren|cac truong tren|nhom tren)\b", "dependent_reference"),
+    ]
+    for pattern, reason in strong_patterns:
+        if re.search(pattern, text):
+            score += 2
+            reasons.append(reason)
+
+    data_slots = [
+        "diem chuan", "diem trung tuyen", "diem xet tuyen", "diem san",
+        "hoc phi", "le phi", "hoc bong", "chi tieu", "ma nganh", "ten nganh",
+        "to hop mon", "khoi thi", "phuong thuc xet tuyen", "xet tuyen",
+        "hoc ba", "thi thpt", "dgnl", "dgtd", "tuyen thang",
+        "ky tuc xa", "dia diem hoc", "co so dao tao", "co hoi viec lam",
+        "viec lam", "muc luong", "chuong trinh dao tao", "chuan dau ra",
+    ]
+    matched_slots = [slot for slot in data_slots if _term_in_text(slot, text)]
+    if len(matched_slots) >= 2:
+        score += 1
+        reasons.append("multiple_data_slots:" + ",".join(matched_slots[:3]))
+
+    school_list_markers = len(re.findall(r"\b(dai hoc|hoc vien|truong)\b", text))
+    if school_list_markers >= 2 or re.search(r"\b(giua|voi)\s+.+\s+(va|,)\s+", text):
+        score += 1
+        reasons.append("multiple_entities")
+
+    if score == 1 and len(matched_slots) <= 1:
+        score = 0
+        reasons.append("single_fact_reset")
+
+    return score, reasons
+
 
 class MultiHopOrchestrator:
     def __init__(
@@ -369,6 +584,23 @@ class MultiHopOrchestrator:
         if not enabled:
             web, rag = await self.base_retriever.retrieve(question, params)
             return web, rag, None
+
+        auto_gate = bool(params.get("auto_multi_hop", self.config.auto_detect_complexity))  # type: ignore
+        force_multi_hop = bool(params.get("force_multi_hop", False))  # type: ignore
+        if auto_gate and not force_multi_hop:
+            score, reasons = _multi_hop_complexity_score(question)
+            threshold = int(params.get("multi_hop_complexity_threshold", self.config.complexity_threshold))  # type: ignore
+            if score < threshold:
+                self.logger.log(
+                    f"[AutoGate] simple question -> single-hop "
+                    f"(score={score}, threshold={threshold}, reasons={reasons})"
+                )
+                web, rag = await self.base_retriever.retrieve(question, params)
+                return web, rag, None
+            self.logger.log(
+                f"[AutoGate] complex question -> multi-hop "
+                f"(score={score}, threshold={threshold}, reasons={reasons})"
+            )
 
         # 1) Decompose
         try:
@@ -458,12 +690,25 @@ class MultiHopOrchestrator:
         )
 
         # ── Reasoning sub-q ──
+        if rewritten != sq.text:
+            self.logger.log(f"  SQ#{sq.id} rewritten: {rewritten}")
+
         if sq.resolver == "reasoning":
             return await self._execute_reasoning_subq(sq, resolved, rewritten, params)
 
         # ── Retrieval sub-q ──
         subq_params = self._scoped_params(sq, params)
         web, rag = await self.base_retriever.retrieve(rewritten, subq_params)
+        self.logger.log(
+            f"  SQ#{sq.id} retrieve-result: web={len(web)} rag={len(rag)} "
+            f"localdb={bool(subq_params.get('use_localdb'))} websearch={bool(subq_params.get('use_websearch'))}"
+        )
+        for idx, src in enumerate(rag[:3], 1):
+            self.logger.log(
+                f"    RAG#{idx}: title={(src.get('title') or '')[:80]} "
+                f"url={src.get('url', '')} chunk_index={src.get('chunk_index', '')} "
+                f"text_chars={len(src.get('text', '') or '')}"
+            )
 
         # Resilient fallback: local_db rỗng → thử web (nếu config cho phép).
         # NOTE: chỉ chạy khi auto_source=True (decomposer được tự chọn nguồn).
@@ -484,6 +729,10 @@ class MultiHopOrchestrator:
                 params,
             )
             web, rag = await self.base_retriever.retrieve(rewritten, fb_params)
+            self.logger.log(
+                f"  SQ#{sq.id} fallback-result: web={len(web)} rag={len(rag)} "
+                f"localdb={bool(fb_params.get('use_localdb'))} websearch={bool(fb_params.get('use_websearch'))}"
+            )
 
         # ── Major-keyword filter ──
         # Loại các chunks không đề cập đến ngành/category được hỏi (ví dụ
@@ -572,7 +821,11 @@ class MultiHopOrchestrator:
                 top = dep_res.rag_sources[:max_chunks]
                 for i, c in enumerate(top, 1):
                     title = c.get("title", "") or ""
-                    text = (c.get("text", "") or "")[:max_chars]
+                    text = _select_relevant_text(
+                        f"{self._original_question} {sq.text}",
+                        c.get("text", "") or "",
+                        max_chars,
+                    )
                     if not text.strip():
                         continue
                     block_parts.append(f"- Chunk {i} [{title}]: {text}")
@@ -580,6 +833,11 @@ class MultiHopOrchestrator:
             evidence_blocks.append(block)
 
         # 2) Gọi reasoner nếu có
+        self.logger.log(
+            f"  SQ#{sq.id} reasoning-evidence: deps={sq.depends_on} "
+            f"blocks={len(evidence_blocks)} chars={sum(len(b) for b in evidence_blocks)} "
+            f"dep_facts={len(dep_facts)}"
+        )
         answer = ""
         confidence = 0.0
         explanation = ""
@@ -600,17 +858,27 @@ class MultiHopOrchestrator:
                         f"  SQ#{sq.id} reasoner OK conf={confidence:.2f} "
                         f"answer_preview={answer[:120]}"
                     )
+                if answer and confidence < self.config.reasoning_confidence_threshold:
+                    self.logger.log(
+                        f"  SQ#{sq.id} reasoner below threshold: conf={confidence:.2f} "
+                        f"< {self.config.reasoning_confidence_threshold:.2f}; discard"
+                    )
+                    answer = ""
+                    confidence = 0.0
             except Exception as e:
                 self.logger.log(f"  SQ#{sq.id} reasoner failed: {e}")
                 traceback.print_exc()
 
         # 3) Fallback nếu reasoner không có / fail
-        if not answer:
+        if not answer and self.config.allow_reasoning_pass_through_fallback:
             answer = " / ".join(f for _, f in dep_facts)
             confidence = 1.0 if answer else 0.0
             explanation = "(fallback: pass-through từ fact của deps)"
 
         # 4) Materialize synthetic RagSource cho reader thấy kết quả reasoning
+        elif not answer:
+            self.logger.log(f"  SQ#{sq.id} reasoning produced no trusted answer; no synthetic evidence")
+
         synthetic_rag: list[RagSource] = []
         if self.config.materialize_reasoning_evidence and answer:
             lines = [f"[Kết quả bước suy luận: {sq.text}]", f"Đáp án: {answer}"]
@@ -665,6 +933,12 @@ class MultiHopOrchestrator:
             if sq.resolver == "local_db":
                 p["use_localdb"] = True
                 p["use_websearch"] = False
+                if (
+                    bool(params.get("use_websearch", False))  # type: ignore[attr-defined]
+                    and bool(p.get("hybrid_retrieval", True))
+                    and (sq.evidence_type or "").lower() in {"list", "comparison", "computation"}
+                ):
+                    p["use_websearch"] = True
             elif sq.resolver == "web":
                 p["use_localdb"] = False
                 p["use_websearch"] = True
@@ -681,10 +955,18 @@ class MultiHopOrchestrator:
             )
 
         # Sub-q đã là atomic, không cần fan-out thêm.
-        p["max_query"] = max(1, int(self.config.subq_max_query))
+        if (sq.evidence_type or "").lower() in {"list", "comparison", "computation"}:
+            p["max_query"] = max(3, int(p.get("max_query", self.config.subq_max_query)))
+        else:
+            p["max_query"] = max(1, int(self.config.subq_max_query))
         # Đảm bảo web retrieval có tham số tối thiểu để chạy được.
         p.setdefault("k_pages", 3)
         p.setdefault("k_docs", 5)
+        self.logger.log(
+            f"  SQ#{sq.id} source-decision: auto_source={auto_source} "
+            f"resolver={sq.resolver} -> localdb={bool(p.get('use_localdb'))} "
+            f"websearch={bool(p.get('use_websearch'))} max_query={p.get('max_query')}"
+        )
         return p  # type: ignore
 
     def _aggregate(
