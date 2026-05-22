@@ -1,0 +1,57 @@
+{
+  "total_records": 5000,
+  "seed": 20260521,
+  "outputs": {
+    "combined": "finetune\\lora_raft_dataset_5000.jsonl",
+    "lora_messages": "finetune\\lora_messages_5000.jsonl",
+    "raft_qa_documents": "finetune\\raft_qa_documents_5000.jsonl"
+  },
+  "splits": {
+    "train": 4500,
+    "validation": 250,
+    "test": 250
+  },
+  "categories": {
+    "tuyen_sinh_diem": 750,
+    "tuyen_sinh_chi_tieu_phuong_thuc": 450,
+    "hoc_phi_tai_chinh": 600,
+    "hoc_vu_sinh_vien": 550,
+    "cong_khai_kiem_dinh": 800,
+    "nganh_dao_tao_nghe_nghiep": 650,
+    "so_sanh_tu_van_xep_hang": 950,
+    "khong_du_du_lieu_guardrail": 250
+  },
+  "task_types": {
+    "qa_numeric": 1350,
+    "qa_fact": 1900,
+    "procedural": 550,
+    "filter_recommendation": 475,
+    "ranking": 120,
+    "comparison": 355,
+    "no_answer": 250
+  },
+  "source_template_counts": {
+    "danh_sach_cau_hoi_finetune.md": 261,
+    "thong_tin_cong_khai_kiem_dinh.md": 40
+  },
+  "schema": {
+    "combined": [
+      "id",
+      "split",
+      "category",
+      "task_type",
+      "question",
+      "answer",
+      "documents",
+      "messages",
+      "metadata"
+    ],
+    "document": [
+      "doc_id",
+      "title",
+      "source",
+      "content",
+      "is_relevant"
+    ]
+  }
+}
