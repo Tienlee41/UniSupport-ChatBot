@@ -677,7 +677,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const simpleRetrieveModeValue = simpleRetrieveMode.value;
         let usewebsearch = websearchCheckbox.checked;
         let uselocaldb = localdbCheckbox.checked;
-        const autoSource = autoSourceCheckbox ? autoSourceCheckbox.checked : true;
+        let autoSource = autoSourceCheckbox ? autoSourceCheckbox.checked : true;
+        let sourceMode = 'auto';
         const enableQualityGate = qualityGateCheckbox ? qualityGateCheckbox.checked : false;
 
         // Validate k_docs value before sending
@@ -706,6 +707,7 @@ document.addEventListener('DOMContentLoaded', function() {
             else if (simpleRetrieveModeValue === "basic") {
                 usewebsearch = true;
                 uselocaldb = true;
+                autoSource = true;
                 maxQuery = 1;
                 kPagesValue = 1;
                 kDocsValue = 3;
@@ -717,6 +719,7 @@ document.addEventListener('DOMContentLoaded', function() {
             else if (simpleRetrieveModeValue == "mid") {
                 usewebsearch = true;
                 uselocaldb = true;
+                autoSource = true;
                 maxQuery = 2;
                 kPagesValue = 3;
                 kDocsValue = 5;
@@ -728,6 +731,7 @@ document.addEventListener('DOMContentLoaded', function() {
             else if (simpleRetrieveModeValue == "advanced") {
                 usewebsearch = true;
                 uselocaldb = true;
+                autoSource = true;
                 maxQuery = 3;
                 kPagesValue = 5;
                 kDocsValue = 5;
@@ -738,6 +742,28 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             else {
             }
+        }
+
+        if (!retrieveData) {
+            usewebsearch = false;
+            uselocaldb = false;
+            autoSource = false;
+            sourceMode = 'web';
+        } else if (autoSource) {
+            sourceMode = 'auto';
+            usewebsearch = true;
+            uselocaldb = true;
+        } else if (usewebsearch && uselocaldb) {
+            sourceMode = 'hybrid';
+        } else if (uselocaldb) {
+            sourceMode = 'local';
+        } else if (usewebsearch) {
+            sourceMode = 'web';
+        } else {
+            sourceMode = 'auto';
+            autoSource = true;
+            usewebsearch = true;
+            uselocaldb = true;
         }
         
         console.log('Model selected:', selectedModelType, 'Use Gemini:', useGemini);
@@ -779,6 +805,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // Advanced search parameters
             use_websearch: usewebsearch,
             use_localdb: uselocaldb,
+            source_mode: sourceMode,
             auto_source: autoSource,
             max_query: maxQuery,
             query_score_threshold: queryScore,

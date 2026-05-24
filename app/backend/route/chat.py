@@ -27,6 +27,7 @@ router = APIRouter()
 
 APP_ROOT = Path(__file__).resolve().parents[2]
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+SOURCE_MODES = {"auto", "local", "web", "hybrid"}
 
 
 def _normalize_text(text: str | None) -> str:
@@ -34,6 +35,43 @@ def _normalize_text(text: str | None) -> str:
         return ""
     normalized = unicodedata.normalize("NFD", text.lower())
     return "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn").strip()
+
+
+def _normalize_source_params(params: dict) -> None:
+    """Keep frontend/API source settings unambiguous before forwarding to worker."""
+    k_docs = int(params.get("k_docs") or 0)
+    k_pages = int(params.get("k_pages") or 0)
+    if k_docs <= 0 and k_pages <= 0 and not params.get("use_localdb"):
+        return
+
+    raw_mode = str(params.get("source_mode") or "").lower()
+    if raw_mode in SOURCE_MODES:
+        source_mode = raw_mode
+    elif bool(params.get("auto_source", True)):
+        source_mode = "auto"
+    else:
+        use_local = bool(params.get("use_localdb"))
+        use_web = bool(params.get("use_websearch"))
+        if use_local and use_web:
+            source_mode = "hybrid"
+        elif use_local:
+            source_mode = "local"
+        elif use_web:
+            source_mode = "web"
+        else:
+            source_mode = "auto"
+
+    params["source_mode"] = source_mode
+    params["auto_source"] = source_mode == "auto"
+    if source_mode in {"auto", "hybrid"}:
+        params["use_localdb"] = True
+        params["use_websearch"] = True
+    elif source_mode == "local":
+        params["use_localdb"] = True
+        params["use_websearch"] = False
+    elif source_mode == "web":
+        params["use_localdb"] = False
+        params["use_websearch"] = True
 
 
 def _build_school_info(entry: dict | None) -> dict | None:
@@ -121,6 +159,7 @@ async def chat(request: Request, data: ChatRequest) -> PreChatResponse:
         session_id = await create_chat_session(user.id)
         if session_id is None:
             raise HTTPException(status_code=500, detail=f"Failed to create new chat session")
+    _normalize_source_params(data.params)
     model_output = await ModelManager.pre_inference(session_id, user.id, data.text, data.params)
     if model_output == None:
         raise HTTPException(status_code=500, detail="Failed to inference model")    

@@ -1,0 +1,2509 @@
+INFO 05-24 14:43:47 [async_llm_engine.py:177] Finished request ec4feb8a74ba4122bfea4cfa75d3c98c.
+INFO 05-24 14:43:47 [async_llm_engine.py:177] Finished request 310381d753014d44a81b2224b767b3d2.
+[RouterRetriever][TIME LLM] year_start=2025 year_end=2025 metric=y
+
+[DocumentQualityGate] STEP 1/3 - Send query to keyword extractor
+[DocumentQualityGate] Question: học phí ngành Khoa học máy tính UET năm 2025
+[VLLM] CallType.KEYWORDS | Instruction length: 168 | Prompt length: 8652 | kwargs: None
+
+================================================================================
+[LLM_CALL CallType.KEYWORDS]
+================================================================================
+{
+  "call_type": "CallType.KEYWORDS",
+  "model_id": "Qwen/Qwen3-4B$$$1",
+  "max_tokens": "[REDACTED]",
+  "temperature": 0.5,
+  "top_p": 0.9,
+  "top_k": 40,
+  "params": {
+    "model_id": "Qwen/Qwen3-4B$$$1",
+    "use_websearch": true,
+    "use_localdb": false,
+    "auto_source": true,
+    "max_query": 1,
+    "query_score_threshold": 0.5,
+    "engine_type": "google",
+    "domain_restrict": false,
+    "school_domain": false,
+    "llm_rerank": false,
+    "page_score_threshold": 0.5,
+    "chunk_score_threshold": 0.5,
+    "k_docs": 5,
+    "k_pages": 3,
+    "page_rerank": false,
+    "chunk_rerank": true,
+    "include_pdf": true,
+    "include_image": true,
+    "merge_table": false,
+    "merge_neighbor": false,
+    "enable_quality_gate": true,
+    "quality_log": true,
+    "max_tokens": "[REDACTED]",
+    "temperature": 0.5,
+    "top_p": 0.9,
+    "top_k": 40,
+    "max_history": 8,
+    "quality_min_score": 0.58,
+    "quality_min_relevance": 0.25,
+    "quality_min_trust": 0.5,
+    "quality_strict_mode": true,
+    "quality_max_docs": 3,
+    "source_safety_filter": true,
+    "quality_force_for_rich_media": true,
+    "hybrid_retrieval": true,
+    "auto_multi_hop": true,
+    "multi_hop_complexity_threshold": 2,
+    "reader_table_rescue_max_sources": 2,
+    "reader_table_rescue_max_chars": 6000,
+    "use_multi_hop": false,
+    "time_metric": "y",
+    "time_year_start": 2025,
+    "time_year_end": 2025
+  },
+  "instruction_chars": 168,
+  "prompt_chars": 8652
+}
+
+================================================================================
+[LLM_SYSTEM_PROMPT CallType.KEYWORDS]
+================================================================================
+Bạn là trợ lý chuyển đổi câu hỏi bằng ngôn ngữ tự nhiên của người dùng về trường đại học, tuyển sinh, khoa hoặc chương trình thành một tập hợp các truy vấn có cấu trúc.
+
+================================================================================
+[LLM_USER_PROMPT CallType.KEYWORDS]
+================================================================================
+Hiện tại là năm 2025.
+Nhiệm vụ: 
+Nhận một "user question" (tiếng Việt) liên quan đến tuyển sinh / thông tin đại học và sinh ra một danh sách các queries (mỗi query là một chuỗi plain text bằng tiếng Việt, không có filter hay operator như site: hoặc filetype:).
+Mỗi query phải ngắn gọn, cụ thể và tối ưu để tìm thông tin chính thức (thông báo tuyển sinh, điểm chuẩn, chỉ tiêu, phương thức, mã ngành, hồ sơ, học phí, lịch, liên hệ…).
+
+Các bước:
+- Bước 1: Xác định câu văn chứa thông tin cần tìm kiếm. 
+- Bước 2: Phân tích câu văn tìm được:
+  - Xác định rõ đối tượng nếu có: trường, ngành, viện, tổ chức, bộ môn, ...
+  - PHÂN BIỆT SEMANTIC QUAN TRỌNG:
+    * "ngành" = chương trình đào tạo (major/degree program) - ví dụ: "ngành Trí tuệ nhân tạo", "ngành Công nghệ thông tin"
+    * "lĩnh vực" = lĩnh vực nghiên cứu (research field) - ví dụ: "lĩnh vực trí tuệ nhân tạo", "nghiên cứu về AI"
+    * Khi câu hỏi có "ngành", query PHẢI giữ từ "ngành" để tìm đúng chương trình đào tạo, không phải lĩnh vực nghiên cứu
+  - Xác định thông tin cần tìm kiếm: điểm chuẩn, điểm xét tuyển, điểm sàn, danh sách giảng viên, địa chỉ, ...
+- Bước 3: Tạo query tìm kiếm:
+  - Định dạng của mỗi phần tử : 
+    {
+      "query": "<string>",
+      "priority": <float 0.0-1.0>,
+      "info": "<string>",
+      "school": "<string>"
+    }
+  - school: tên trường hoặc kí hiệu (ví dụ hust hoặc đại học bách khoa hà nội) viết thường toàn bộ (lower case), chuẩn hóa school (ví dụ chuyển “hust” → “hust”, “ĐH Bách Khoa Hà Nội” → “đại học bách khoa hà nội”). Nếu không thể xác định trường từ câu hỏi, để school là chuỗi rỗng "".
+  - query: kết hợp đối tượng và thông tin cần tìm kiếm để tạo query
+  - info: những thông tin mà query này sẽ cung cấp
+  - priority: float từ 0.0–1.0 — mức quan trọng/ưu tiên khi chạy tìm kiếm (1.0 = ưu tiên cao).
+- Bước 4: Nhận diện đúng PERSONA/Ý ĐỊNH (để chọn từ khóa chuẩn):
+  - **Nhóm học sinh phụ huynh (tuyển sinh):**
+    * Câu hỏi xoay quanh: điểm chuẩn, chỉ tiêu, mã ngành, phương thức xét tuyển, lịch tuyển sinh, so sánh trường/ngành, học phí tổng quan.
+    * Query phải chứa keywords chính thức (ví dụ: "điểm chuẩn ngành ... 2025", "chỉ tiêu tuyển sinh UET 2025").
+  - **Nhóm sinh viên đang học (học vụ, dịch vụ):**
+    * Câu hỏi xoay quanh: đăng ký tín chỉ, xin nghỉ học, học phí theo kỳ, thủ tục tốt nghiệp, lịch học lại, hỗ trợ học bổng, dịch vụ sinh viên.
+    * PHẢI giữ nguyên các cụm "kỳ", "học kỳ", "tín chỉ", "thủ tục", "đóng học phí", "liên hệ phòng ..." vì đây là tín hiệu quan trọng để tìm đúng thông báo nội bộ.
+
+Quy tắc tạo query:
+  - Tóm tắt câu hỏi thành từ khóa chính làm sao để khi tìm kiếm các trang hiện ra sẽ có chứa thông tin cần thiết để trả lời câu hỏi. Ví dụ như hỏi số Tiến sĩ của trường thì không thể tìm trực tiếp ra số tiến sĩ được, mà phải tìm "danh sách giảng viên của trường", từ thông tin danh sách giảng viên LLM sẽ đếm số tiến sĩ.
+  - QUAN TRỌNG: Phân biệt "ngành" (chương trình đào tạo) vs "lĩnh vực" (nghiên cứu):
+    * Nếu câu hỏi có "ngành X" → query PHẢI có "ngành X" để tìm đúng chương trình đào tạo
+    * Ví dụ: "thủ khoa ngành trí tuệ nhân tạo" → query: "thủ khoa ngành trí tuệ nhân tạo" (KHÔNG bỏ từ "ngành")
+    * Ví dụ: "nghiên cứu về trí tuệ nhân tạo" → query: "nghiên cứu trí tuệ nhân tạo" (không cần "ngành")
+  - Với câu hỏi học vụ (sinh viên), LUÔN giữ các cụm "học kỳ", "tín chỉ", "thủ tục", "đăng ký", "gia hạn", "phòng ban" vì các trang thông báo nội bộ phụ thuộc vào những từ này.
+  - Luôn cân nhắc năm/kỳ nếu user đề cập.
+  - Tạo phrasing khác nhau để tìm nguồn chính thức và nguồn phân tích (ví dụ: "Thông báo tuyển sinh + tên trường + năm", "Điểm chuẩn + tên ngành + năm", ...).
+  - Không dùng dấu ngoặc, toán tử tìm kiếm, hay domain-specific filter.
+  - Các query không được giống nhau, hoặc có nghĩa giống nhau, và phải cung cấp info khác nhau với mỗi query.
+ 
+Quy định cụ thể cho trường school:
+  - Nếu user nêu tên trường trong câu hỏi, dùng chính xác tên đó (không viết hoa) làm school. Ví dụ: "Đại học Bách Khoa Hà Nội" → "đại học bách khoa hà nội".
+  - Nếu user không nêu trường nhưng query vẫn liên quan đến một trường cụ thể (ví dụ user hỏi "ngành X của trường Y" thì dùng Y), đặt school tương ứng.
+  - Nếu user nêu nhiều trường trong một câu hỏi, cho phép tạo queries cho từng trường; mỗi query chỉ chứa 1 school tương ứng.
+ 
+Nguyên tắc xuất dữ liệu cuối:
+  - Tạo ra ít query nhất có thể
+  - Xuất chỉ một JSON array (list) gồm các object như mẫu trên, không thêm chú thích ngoài JSON.
+  - Tối thiểu 1 query, tối đa 1 queries.
+  - Sắp xếp queries theo priority giảm dần (cao nhất trước).
+  - Nếu user hỏi nhiều trường, có thể trả về queries cho từng trường (mỗi query gắn school tương ứng).
+ 
+Thông tin thêm:
+  Một số tên viết tắt phổ biến:
+    - Trường Đại học Công nghệ - ĐHQG Hà Nội: UET
+    - Trường Đại học Khoa học Tự nhiên - ĐHQG Hà Nội: HUS
+    - Đại học Bách khoa Hà Nội: HUST
+    - Đại học Kinh tế Quốc dân: NEU
+    - Đại học Ngoại thương: FTU
+    - Đại học Thương mại: TMU
+    - Đại học Luật Hà Nội: HLU
+    - Đại học sư phạm Hà Nội: HNUE
+    - Đại học Y Hà Nội: HMU
+    - Đại học Công nghiệp Hà Nội: HAUI
+    - Trường Đại học Luật - ĐHQG Hà Nội: LS(đối với local DB), VNU-UL(đối với web search)
+    - Trường Đại học Kinh tế - ĐHQG Hà Nội: UEB
+    - Trường Đại học Ngoại ngữ - ĐHQG Hà Nội: ULIS
+    - Trường Đại học Khoa học Xã hội và Nhân văn - ĐHQG Hà Nội: USSH
+    - Đại học Giao thông Vận tải: UTC
+    - Học viện Công nghệ Bưu chính Viễn thông: PTIT
+    - Học viện Kĩ thuật mật mã: ACT(đối với local DB), KMA(đối với web search)
+    - Học viện Báo chí và Tuyên truyền: AJC
+ 
+Ví dụ:
+user question: Điểm chuẩn Đại học Bách khoa Hà Nội. Với 28 điểm thì tôi nên chọn trường nào, có lưu ý gì không ?.
+- Bước 1: "Điểm chuẩn Đại học Bách khoa Hà Nội"
+- Bước 2: Phân tích
+  - Đối tượng: "Đại học Bách khoa Hà Nội".
+  - Thông tin cần tìm kiếm: "điểm chuẩn".
+- Bước 3: [
+  {
+    "query": "điểm chuẩn đại học bách khoa hà nội 2025",
+    "priority": 1.0,
+    "info": "điểm chuẩn của trường",
+    "school": "Đại học Bách khoa Hà Nội"
+  }
+]
+
+user question: Số tiến sĩ trường đại học công nghệ - uet và đại học bách khoa hà nội. Trường nào nhiều tiến sĩ hơn ?
+- Bước 1: "Số tiến sĩ trường đại học công nghệ - uet và đại học bách khoa hà nội"
+- Bước 2:
+  - Đối tượng: "Đại học công nghệ - uet", "đại học bách khoa hà nội"
+  - Thông tin cần tìm kiếm: "giảng viên", "danh sách giảng viên" (số Tiến sĩ của trường thì không thể tìm trực tiếp ra số tiến sĩ được, mà phải tìm "danh sách giảng viên của trường", từ thông tin danh sách giảng viên LLM sẽ đếm số tiến sĩ)
+- Bước 3: 
+```json
+[
+  {
+    "query": "danh sách giảng viên trường đại học công nghệ - uet",
+    "priority": 1.0,
+    "info": "thông tin giảng viên của trường",
+    "school": "đại học công nghệ - uet"
+  },
+  {
+    "query": "danh sách giảng viên trường đại học bách khoa hà nội",
+    "priority": 1.0,
+    "info": "thông tin giảng viên của trường",
+    "school": "đại học bách khoa hà nội"
+  }
+]
+```
+
+user question: Thủ khoa ngành trí tuệ nhân tạo UET 2025 là ai
+- Bước 1: "Thủ khoa ngành trí tuệ nhân tạo UET 2025"
+- Bước 2: Phân tích
+  - Đối tượng: "ngành Trí tuệ nhân tạo" (QUAN TRỌNG: "ngành" = chương trình đào tạo, không phải lĩnh vực nghiên cứu)
+  - Thông tin cần tìm kiếm: "thủ khoa", "thủ khoa tốt nghiệp"
+  - Lưu ý: Query PHẢI giữ từ "ngành" để tìm đúng chương trình đào tạo, không phải lĩnh vực nghiên cứu
+- Bước 3: [
+  {
+    "query": "thủ khoa ngành trí tuệ nhân tạo uet 2025",
+    "priority": 1.0,
+    "info": "thông tin về thủ khoa ngành trí tuệ nhân tạo năm 2025",
+    "school": "uet"
+  }
+]
+
+user question: Học phí kỳ 2 năm học 2024-2025 của sinh viên UET đóng ở đâu và hạn cuối là khi nào?
+- Bước 1: "Học phí kỳ 2 năm học 2024-2025 của sinh viên UET đóng ở đâu và hạn cuối là khi nào?"
+- Bước 2:
+  - Đối tượng: "UET", phạm vi "sinh viên đang học", nội dung "đóng học phí kỳ 2", "hạn cuối"
+  - PHẢI giữ nguyên cụm "kỳ 2 năm học 2024-2025", "đóng ở đâu", "hạn cuối"
+- Bước 3: [
+  {
+    "query": "thủ tục đóng học phí kỳ 2 năm học 2024-2025 uet hạn cuối",
+    "priority": 1.0,
+    "info": "hướng dẫn đóng học phí kỳ 2 và hạn nộp",
+    "school": "uet"
+  }
+]
+
+user question: Em cần đăng ký học lại học phần X vào học kỳ hè 2025 của UET thì phải làm sao?
+- Bước 1: "Đăng ký học lại học phần X vào học kỳ hè 2025 của UET"
+- Bước 2:
+  - Đối tượng: "UET", hành động "đăng ký học lại", thời gian "học kỳ hè 2025", môn "học phần X"
+  - Không được bỏ cụm "đăng ký học lại", "học kỳ hè 2025"
+- Bước 3: [
+  {
+    "query": "đăng ký học lại học kỳ hè 2025 uet hướng dẫn",
+    "priority": 1.0,
+    "info": "thủ tục đăng ký học lại học kỳ hè",
+    "school": "uet"
+  }
+]
+user question: học phí ngành Khoa học máy tính UET năm 2025
+INFO 05-24 14:43:47 [async_llm_engine.py:209] Added request df7b9d84bc8242e29d2ea3bbf2a9a6e7.
+[RouterRetriever][TIME LLM] year_start=2025 year_end=2025 metric=y
+
+[DocumentQualityGate] STEP 1/3 - Send query to keyword extractor
+[DocumentQualityGate] Question: học phí ngành Khoa học máy tính PTIT năm 2025
+[VLLM] CallType.KEYWORDS | Instruction length: 168 | Prompt length: 8653 | kwargs: None
+
+================================================================================
+[LLM_CALL CallType.KEYWORDS]
+================================================================================
+{
+  "call_type": "CallType.KEYWORDS",
+  "model_id": "Qwen/Qwen3-4B$$$1",
+  "max_tokens": "[REDACTED]",
+  "temperature": 0.5,
+  "top_p": 0.9,
+  "top_k": 40,
+  "params": {
+    "model_id": "Qwen/Qwen3-4B$$$1",
+    "use_websearch": true,
+    "use_localdb": false,
+    "auto_source": true,
+    "max_query": 1,
+    "query_score_threshold": 0.5,
+    "engine_type": "google",
+    "domain_restrict": false,
+    "school_domain": false,
+    "llm_rerank": false,
+    "page_score_threshold": 0.5,
+    "chunk_score_threshold": 0.5,
+    "k_docs": 5,
+    "k_pages": 3,
+    "page_rerank": false,
+    "chunk_rerank": true,
+    "include_pdf": true,
+    "include_image": true,
+    "merge_table": false,
+    "merge_neighbor": false,
+    "enable_quality_gate": true,
+    "quality_log": true,
+    "max_tokens": "[REDACTED]",
+    "temperature": 0.5,
+    "top_p": 0.9,
+    "top_k": 40,
+    "max_history": 8,
+    "quality_min_score": 0.58,
+    "quality_min_relevance": 0.25,
+    "quality_min_trust": 0.5,
+    "quality_strict_mode": true,
+    "quality_max_docs": 3,
+    "source_safety_filter": true,
+    "quality_force_for_rich_media": true,
+    "hybrid_retrieval": true,
+    "auto_multi_hop": true,
+    "multi_hop_complexity_threshold": 2,
+    "reader_table_rescue_max_sources": 2,
+    "reader_table_rescue_max_chars": 6000,
+    "use_multi_hop": false,
+    "time_metric": "y",
+    "time_year_start": 2025,
+    "time_year_end": 2025
+  },
+  "instruction_chars": 168,
+  "prompt_chars": 8653
+}
+
+================================================================================
+[LLM_SYSTEM_PROMPT CallType.KEYWORDS]
+================================================================================
+Bạn là trợ lý chuyển đổi câu hỏi bằng ngôn ngữ tự nhiên của người dùng về trường đại học, tuyển sinh, khoa hoặc chương trình thành một tập hợp các truy vấn có cấu trúc.
+
+================================================================================
+[LLM_USER_PROMPT CallType.KEYWORDS]
+================================================================================
+Hiện tại là năm 2025.
+Nhiệm vụ: 
+Nhận một "user question" (tiếng Việt) liên quan đến tuyển sinh / thông tin đại học và sinh ra một danh sách các queries (mỗi query là một chuỗi plain text bằng tiếng Việt, không có filter hay operator như site: hoặc filetype:).
+Mỗi query phải ngắn gọn, cụ thể và tối ưu để tìm thông tin chính thức (thông báo tuyển sinh, điểm chuẩn, chỉ tiêu, phương thức, mã ngành, hồ sơ, học phí, lịch, liên hệ…).
+
+Các bước:
+- Bước 1: Xác định câu văn chứa thông tin cần tìm kiếm. 
+- Bước 2: Phân tích câu văn tìm được:
+  - Xác định rõ đối tượng nếu có: trường, ngành, viện, tổ chức, bộ môn, ...
+  - PHÂN BIỆT SEMANTIC QUAN TRỌNG:
+    * "ngành" = chương trình đào tạo (major/degree program) - ví dụ: "ngành Trí tuệ nhân tạo", "ngành Công nghệ thông tin"
+    * "lĩnh vực" = lĩnh vực nghiên cứu (research field) - ví dụ: "lĩnh vực trí tuệ nhân tạo", "nghiên cứu về AI"
+    * Khi câu hỏi có "ngành", query PHẢI giữ từ "ngành" để tìm đúng chương trình đào tạo, không phải lĩnh vực nghiên cứu
+  - Xác định thông tin cần tìm kiếm: điểm chuẩn, điểm xét tuyển, điểm sàn, danh sách giảng viên, địa chỉ, ...
+- Bước 3: Tạo query tìm kiếm:
+  - Định dạng của mỗi phần tử : 
+    {
+      "query": "<string>",
+      "priority": <float 0.0-1.0>,
+      "info": "<string>",
+      "school": "<string>"
+    }
+  - school: tên trường hoặc kí hiệu (ví dụ hust hoặc đại học bách khoa hà nội) viết thường toàn bộ (lower case), chuẩn hóa school (ví dụ chuyển “hust” → “hust”, “ĐH Bách Khoa Hà Nội” → “đại học bách khoa hà nội”). Nếu không thể xác định trường từ câu hỏi, để school là chuỗi rỗng "".
+  - query: kết hợp đối tượng và thông tin cần tìm kiếm để tạo query
+  - info: những thông tin mà query này sẽ cung cấp
+  - priority: float từ 0.0–1.0 — mức quan trọng/ưu tiên khi chạy tìm kiếm (1.0 = ưu tiên cao).
+- Bước 4: Nhận diện đúng PERSONA/Ý ĐỊNH (để chọn từ khóa chuẩn):
+  - **Nhóm học sinh phụ huynh (tuyển sinh):**
+    * Câu hỏi xoay quanh: điểm chuẩn, chỉ tiêu, mã ngành, phương thức xét tuyển, lịch tuyển sinh, so sánh trường/ngành, học phí tổng quan.
+    * Query phải chứa keywords chính thức (ví dụ: "điểm chuẩn ngành ... 2025", "chỉ tiêu tuyển sinh UET 2025").
+  - **Nhóm sinh viên đang học (học vụ, dịch vụ):**
+    * Câu hỏi xoay quanh: đăng ký tín chỉ, xin nghỉ học, học phí theo kỳ, thủ tục tốt nghiệp, lịch học lại, hỗ trợ học bổng, dịch vụ sinh viên.
+    * PHẢI giữ nguyên các cụm "kỳ", "học kỳ", "tín chỉ", "thủ tục", "đóng học phí", "liên hệ phòng ..." vì đây là tín hiệu quan trọng để tìm đúng thông báo nội bộ.
+
+Quy tắc tạo query:
+  - Tóm tắt câu hỏi thành từ khóa chính làm sao để khi tìm kiếm các trang hiện ra sẽ có chứa thông tin cần thiết để trả lời câu hỏi. Ví dụ như hỏi số Tiến sĩ của trường thì không thể tìm trực tiếp ra số tiến sĩ được, mà phải tìm "danh sách giảng viên của trường", từ thông tin danh sách giảng viên LLM sẽ đếm số tiến sĩ.
+  - QUAN TRỌNG: Phân biệt "ngành" (chương trình đào tạo) vs "lĩnh vực" (nghiên cứu):
+    * Nếu câu hỏi có "ngành X" → query PHẢI có "ngành X" để tìm đúng chương trình đào tạo
+    * Ví dụ: "thủ khoa ngành trí tuệ nhân tạo" → query: "thủ khoa ngành trí tuệ nhân tạo" (KHÔNG bỏ từ "ngành")
+    * Ví dụ: "nghiên cứu về trí tuệ nhân tạo" → query: "nghiên cứu trí tuệ nhân tạo" (không cần "ngành")
+  - Với câu hỏi học vụ (sinh viên), LUÔN giữ các cụm "học kỳ", "tín chỉ", "thủ tục", "đăng ký", "gia hạn", "phòng ban" vì các trang thông báo nội bộ phụ thuộc vào những từ này.
+  - Luôn cân nhắc năm/kỳ nếu user đề cập.
+  - Tạo phrasing khác nhau để tìm nguồn chính thức và nguồn phân tích (ví dụ: "Thông báo tuyển sinh + tên trường + năm", "Điểm chuẩn + tên ngành + năm", ...).
+  - Không dùng dấu ngoặc, toán tử tìm kiếm, hay domain-specific filter.
+  - Các query không được giống nhau, hoặc có nghĩa giống nhau, và phải cung cấp info khác nhau với mỗi query.
+ 
+Quy định cụ thể cho trường school:
+  - Nếu user nêu tên trường trong câu hỏi, dùng chính xác tên đó (không viết hoa) làm school. Ví dụ: "Đại học Bách Khoa Hà Nội" → "đại học bách khoa hà nội".
+  - Nếu user không nêu trường nhưng query vẫn liên quan đến một trường cụ thể (ví dụ user hỏi "ngành X của trường Y" thì dùng Y), đặt school tương ứng.
+  - Nếu user nêu nhiều trường trong một câu hỏi, cho phép tạo queries cho từng trường; mỗi query chỉ chứa 1 school tương ứng.
+ 
+Nguyên tắc xuất dữ liệu cuối:
+  - Tạo ra ít query nhất có thể
+  - Xuất chỉ một JSON array (list) gồm các object như mẫu trên, không thêm chú thích ngoài JSON.
+  - Tối thiểu 1 query, tối đa 1 queries.
+  - Sắp xếp queries theo priority giảm dần (cao nhất trước).
+  - Nếu user hỏi nhiều trường, có thể trả về queries cho từng trường (mỗi query gắn school tương ứng).
+ 
+Thông tin thêm:
+  Một số tên viết tắt phổ biến:
+    - Trường Đại học Công nghệ - ĐHQG Hà Nội: UET
+    - Trường Đại học Khoa học Tự nhiên - ĐHQG Hà Nội: HUS
+    - Đại học Bách khoa Hà Nội: HUST
+    - Đại học Kinh tế Quốc dân: NEU
+    - Đại học Ngoại thương: FTU
+    - Đại học Thương mại: TMU
+    - Đại học Luật Hà Nội: HLU
+    - Đại học sư phạm Hà Nội: HNUE
+    - Đại học Y Hà Nội: HMU
+    - Đại học Công nghiệp Hà Nội: HAUI
+    - Trường Đại học Luật - ĐHQG Hà Nội: LS(đối với local DB), VNU-UL(đối với web search)
+    - Trường Đại học Kinh tế - ĐHQG Hà Nội: UEB
+    - Trường Đại học Ngoại ngữ - ĐHQG Hà Nội: ULIS
+    - Trường Đại học Khoa học Xã hội và Nhân văn - ĐHQG Hà Nội: USSH
+    - Đại học Giao thông Vận tải: UTC
+    - Học viện Công nghệ Bưu chính Viễn thông: PTIT
+    - Học viện Kĩ thuật mật mã: ACT(đối với local DB), KMA(đối với web search)
+    - Học viện Báo chí và Tuyên truyền: AJC
+ 
+Ví dụ:
+user question: Điểm chuẩn Đại học Bách khoa Hà Nội. Với 28 điểm thì tôi nên chọn trường nào, có lưu ý gì không ?.
+- Bước 1: "Điểm chuẩn Đại học Bách khoa Hà Nội"
+- Bước 2: Phân tích
+  - Đối tượng: "Đại học Bách khoa Hà Nội".
+  - Thông tin cần tìm kiếm: "điểm chuẩn".
+- Bước 3: [
+  {
+    "query": "điểm chuẩn đại học bách khoa hà nội 2025",
+    "priority": 1.0,
+    "info": "điểm chuẩn của trường",
+    "school": "Đại học Bách khoa Hà Nội"
+  }
+]
+
+user question: Số tiến sĩ trường đại học công nghệ - uet và đại học bách khoa hà nội. Trường nào nhiều tiến sĩ hơn ?
+- Bước 1: "Số tiến sĩ trường đại học công nghệ - uet và đại học bách khoa hà nội"
+- Bước 2:
+  - Đối tượng: "Đại học công nghệ - uet", "đại học bách khoa hà nội"
+  - Thông tin cần tìm kiếm: "giảng viên", "danh sách giảng viên" (số Tiến sĩ của trường thì không thể tìm trực tiếp ra số tiến sĩ được, mà phải tìm "danh sách giảng viên của trường", từ thông tin danh sách giảng viên LLM sẽ đếm số tiến sĩ)
+- Bước 3: 
+```json
+[
+  {
+    "query": "danh sách giảng viên trường đại học công nghệ - uet",
+    "priority": 1.0,
+    "info": "thông tin giảng viên của trường",
+    "school": "đại học công nghệ - uet"
+  },
+  {
+    "query": "danh sách giảng viên trường đại học bách khoa hà nội",
+    "priority": 1.0,
+    "info": "thông tin giảng viên của trường",
+    "school": "đại học bách khoa hà nội"
+  }
+]
+```
+
+user question: Thủ khoa ngành trí tuệ nhân tạo UET 2025 là ai
+- Bước 1: "Thủ khoa ngành trí tuệ nhân tạo UET 2025"
+- Bước 2: Phân tích
+  - Đối tượng: "ngành Trí tuệ nhân tạo" (QUAN TRỌNG: "ngành" = chương trình đào tạo, không phải lĩnh vực nghiên cứu)
+  - Thông tin cần tìm kiếm: "thủ khoa", "thủ khoa tốt nghiệp"
+  - Lưu ý: Query PHẢI giữ từ "ngành" để tìm đúng chương trình đào tạo, không phải lĩnh vực nghiên cứu
+- Bước 3: [
+  {
+    "query": "thủ khoa ngành trí tuệ nhân tạo uet 2025",
+    "priority": 1.0,
+    "info": "thông tin về thủ khoa ngành trí tuệ nhân tạo năm 2025",
+    "school": "uet"
+  }
+]
+
+user question: Học phí kỳ 2 năm học 2024-2025 của sinh viên UET đóng ở đâu và hạn cuối là khi nào?
+- Bước 1: "Học phí kỳ 2 năm học 2024-2025 của sinh viên UET đóng ở đâu và hạn cuối là khi nào?"
+- Bước 2:
+  - Đối tượng: "UET", phạm vi "sinh viên đang học", nội dung "đóng học phí kỳ 2", "hạn cuối"
+  - PHẢI giữ nguyên cụm "kỳ 2 năm học 2024-2025", "đóng ở đâu", "hạn cuối"
+- Bước 3: [
+  {
+    "query": "thủ tục đóng học phí kỳ 2 năm học 2024-2025 uet hạn cuối",
+    "priority": 1.0,
+    "info": "hướng dẫn đóng học phí kỳ 2 và hạn nộp",
+    "school": "uet"
+  }
+]
+
+user question: Em cần đăng ký học lại học phần X vào học kỳ hè 2025 của UET thì phải làm sao?
+- Bước 1: "Đăng ký học lại học phần X vào học kỳ hè 2025 của UET"
+- Bước 2:
+  - Đối tượng: "UET", hành động "đăng ký học lại", thời gian "học kỳ hè 2025", môn "học phần X"
+  - Không được bỏ cụm "đăng ký học lại", "học kỳ hè 2025"
+- Bước 3: [
+  {
+    "query": "đăng ký học lại học kỳ hè 2025 uet hướng dẫn",
+    "priority": 1.0,
+    "info": "thủ tục đăng ký học lại học kỳ hè",
+    "school": "uet"
+  }
+]
+user question: học phí ngành Khoa học máy tính PTIT năm 2025
+INFO 05-24 14:43:47 [async_llm_engine.py:209] Added request 0dafa6695d374df79bcc2ea1c2e57e1e.
+INFO 05-24 14:43:49 [metrics.py:386] Avg prompt throughput: 1442.1 tokens/s, Avg generation throughput: 41.6 tokens/s, Running: 4 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 14.3%, CPU KV cache usage: 0.0%.
+INFO 05-24 14:43:49 [async_llm_engine.py:177] Finished request bcbbc0a199594510afde79d24fae8e88.
+INFO 05-24 14:43:49 [async_llm_engine.py:177] Finished request d4e8657e54da4140b0416dfa20754351.
+[RouterRetriever][TIME LLM] year_start=2025 year_end=2025 metric=y
+
+[DocumentQualityGate] STEP 1/3 - Send query to keyword extractor
+[DocumentQualityGate] Question: điểm chuẩn ngành Khoa học máy tính khối A00 UET năm 2025
+[VLLM] CallType.KEYWORDS | Instruction length: 168 | Prompt length: 8664 | kwargs: None
+
+================================================================================
+[LLM_CALL CallType.KEYWORDS]
+================================================================================
+{
+  "call_type": "CallType.KEYWORDS",
+  "model_id": "Qwen/Qwen3-4B$$$1",
+  "max_tokens": "[REDACTED]",
+  "temperature": 0.5,
+  "top_p": 0.9,
+  "top_k": 40,
+  "params": {
+    "model_id": "Qwen/Qwen3-4B$$$1",
+    "use_websearch": true,
+    "use_localdb": false,
+    "auto_source": true,
+    "max_query": 1,
+    "query_score_threshold": 0.5,
+    "engine_type": "google",
+    "domain_restrict": false,
+    "school_domain": false,
+    "llm_rerank": false,
+    "page_score_threshold": 0.5,
+    "chunk_score_threshold": 0.5,
+    "k_docs": 5,
+    "k_pages": 3,
+    "page_rerank": false,
+    "chunk_rerank": true,
+    "include_pdf": true,
+    "include_image": true,
+    "merge_table": false,
+    "merge_neighbor": false,
+    "enable_quality_gate": true,
+    "quality_log": true,
+    "max_tokens": "[REDACTED]",
+    "temperature": 0.5,
+    "top_p": 0.9,
+    "top_k": 40,
+    "max_history": 8,
+    "quality_min_score": 0.58,
+    "quality_min_relevance": 0.25,
+    "quality_min_trust": 0.5,
+    "quality_strict_mode": true,
+    "quality_max_docs": 3,
+    "source_safety_filter": true,
+    "quality_force_for_rich_media": true,
+    "hybrid_retrieval": true,
+    "auto_multi_hop": true,
+    "multi_hop_complexity_threshold": 2,
+    "reader_table_rescue_max_sources": 2,
+    "reader_table_rescue_max_chars": 6000,
+    "use_multi_hop": false,
+    "time_metric": "y",
+    "time_year_start": 2025,
+    "time_year_end": 2025
+  },
+  "instruction_chars": 168,
+  "prompt_chars": 8664
+}
+
+================================================================================
+[LLM_SYSTEM_PROMPT CallType.KEYWORDS]
+================================================================================
+Bạn là trợ lý chuyển đổi câu hỏi bằng ngôn ngữ tự nhiên của người dùng về trường đại học, tuyển sinh, khoa hoặc chương trình thành một tập hợp các truy vấn có cấu trúc.
+
+================================================================================
+[LLM_USER_PROMPT CallType.KEYWORDS]
+================================================================================
+Hiện tại là năm 2025.
+Nhiệm vụ: 
+Nhận một "user question" (tiếng Việt) liên quan đến tuyển sinh / thông tin đại học và sinh ra một danh sách các queries (mỗi query là một chuỗi plain text bằng tiếng Việt, không có filter hay operator như site: hoặc filetype:).
+Mỗi query phải ngắn gọn, cụ thể và tối ưu để tìm thông tin chính thức (thông báo tuyển sinh, điểm chuẩn, chỉ tiêu, phương thức, mã ngành, hồ sơ, học phí, lịch, liên hệ…).
+
+Các bước:
+- Bước 1: Xác định câu văn chứa thông tin cần tìm kiếm. 
+- Bước 2: Phân tích câu văn tìm được:
+  - Xác định rõ đối tượng nếu có: trường, ngành, viện, tổ chức, bộ môn, ...
+  - PHÂN BIỆT SEMANTIC QUAN TRỌNG:
+    * "ngành" = chương trình đào tạo (major/degree program) - ví dụ: "ngành Trí tuệ nhân tạo", "ngành Công nghệ thông tin"
+    * "lĩnh vực" = lĩnh vực nghiên cứu (research field) - ví dụ: "lĩnh vực trí tuệ nhân tạo", "nghiên cứu về AI"
+    * Khi câu hỏi có "ngành", query PHẢI giữ từ "ngành" để tìm đúng chương trình đào tạo, không phải lĩnh vực nghiên cứu
+  - Xác định thông tin cần tìm kiếm: điểm chuẩn, điểm xét tuyển, điểm sàn, danh sách giảng viên, địa chỉ, ...
+- Bước 3: Tạo query tìm kiếm:
+  - Định dạng của mỗi phần tử : 
+    {
+      "query": "<string>",
+      "priority": <float 0.0-1.0>,
+      "info": "<string>",
+      "school": "<string>"
+    }
+  - school: tên trường hoặc kí hiệu (ví dụ hust hoặc đại học bách khoa hà nội) viết thường toàn bộ (lower case), chuẩn hóa school (ví dụ chuyển “hust” → “hust”, “ĐH Bách Khoa Hà Nội” → “đại học bách khoa hà nội”). Nếu không thể xác định trường từ câu hỏi, để school là chuỗi rỗng "".
+  - query: kết hợp đối tượng và thông tin cần tìm kiếm để tạo query
+  - info: những thông tin mà query này sẽ cung cấp
+  - priority: float từ 0.0–1.0 — mức quan trọng/ưu tiên khi chạy tìm kiếm (1.0 = ưu tiên cao).
+- Bước 4: Nhận diện đúng PERSONA/Ý ĐỊNH (để chọn từ khóa chuẩn):
+  - **Nhóm học sinh phụ huynh (tuyển sinh):**
+    * Câu hỏi xoay quanh: điểm chuẩn, chỉ tiêu, mã ngành, phương thức xét tuyển, lịch tuyển sinh, so sánh trường/ngành, học phí tổng quan.
+    * Query phải chứa keywords chính thức (ví dụ: "điểm chuẩn ngành ... 2025", "chỉ tiêu tuyển sinh UET 2025").
+  - **Nhóm sinh viên đang học (học vụ, dịch vụ):**
+    * Câu hỏi xoay quanh: đăng ký tín chỉ, xin nghỉ học, học phí theo kỳ, thủ tục tốt nghiệp, lịch học lại, hỗ trợ học bổng, dịch vụ sinh viên.
+    * PHẢI giữ nguyên các cụm "kỳ", "học kỳ", "tín chỉ", "thủ tục", "đóng học phí", "liên hệ phòng ..." vì đây là tín hiệu quan trọng để tìm đúng thông báo nội bộ.
+
+Quy tắc tạo query:
+  - Tóm tắt câu hỏi thành từ khóa chính làm sao để khi tìm kiếm các trang hiện ra sẽ có chứa thông tin cần thiết để trả lời câu hỏi. Ví dụ như hỏi số Tiến sĩ của trường thì không thể tìm trực tiếp ra số tiến sĩ được, mà phải tìm "danh sách giảng viên của trường", từ thông tin danh sách giảng viên LLM sẽ đếm số tiến sĩ.
+  - QUAN TRỌNG: Phân biệt "ngành" (chương trình đào tạo) vs "lĩnh vực" (nghiên cứu):
+    * Nếu câu hỏi có "ngành X" → query PHẢI có "ngành X" để tìm đúng chương trình đào tạo
+    * Ví dụ: "thủ khoa ngành trí tuệ nhân tạo" → query: "thủ khoa ngành trí tuệ nhân tạo" (KHÔNG bỏ từ "ngành")
+    * Ví dụ: "nghiên cứu về trí tuệ nhân tạo" → query: "nghiên cứu trí tuệ nhân tạo" (không cần "ngành")
+  - Với câu hỏi học vụ (sinh viên), LUÔN giữ các cụm "học kỳ", "tín chỉ", "thủ tục", "đăng ký", "gia hạn", "phòng ban" vì các trang thông báo nội bộ phụ thuộc vào những từ này.
+  - Luôn cân nhắc năm/kỳ nếu user đề cập.
+  - Tạo phrasing khác nhau để tìm nguồn chính thức và nguồn phân tích (ví dụ: "Thông báo tuyển sinh + tên trường + năm", "Điểm chuẩn + tên ngành + năm", ...).
+  - Không dùng dấu ngoặc, toán tử tìm kiếm, hay domain-specific filter.
+  - Các query không được giống nhau, hoặc có nghĩa giống nhau, và phải cung cấp info khác nhau với mỗi query.
+ 
+Quy định cụ thể cho trường school:
+  - Nếu user nêu tên trường trong câu hỏi, dùng chính xác tên đó (không viết hoa) làm school. Ví dụ: "Đại học Bách Khoa Hà Nội" → "đại học bách khoa hà nội".
+  - Nếu user không nêu trường nhưng query vẫn liên quan đến một trường cụ thể (ví dụ user hỏi "ngành X của trường Y" thì dùng Y), đặt school tương ứng.
+  - Nếu user nêu nhiều trường trong một câu hỏi, cho phép tạo queries cho từng trường; mỗi query chỉ chứa 1 school tương ứng.
+ 
+Nguyên tắc xuất dữ liệu cuối:
+  - Tạo ra ít query nhất có thể
+  - Xuất chỉ một JSON array (list) gồm các object như mẫu trên, không thêm chú thích ngoài JSON.
+  - Tối thiểu 1 query, tối đa 1 queries.
+  - Sắp xếp queries theo priority giảm dần (cao nhất trước).
+  - Nếu user hỏi nhiều trường, có thể trả về queries cho từng trường (mỗi query gắn school tương ứng).
+ 
+Thông tin thêm:
+  Một số tên viết tắt phổ biến:
+    - Trường Đại học Công nghệ - ĐHQG Hà Nội: UET
+    - Trường Đại học Khoa học Tự nhiên - ĐHQG Hà Nội: HUS
+    - Đại học Bách khoa Hà Nội: HUST
+    - Đại học Kinh tế Quốc dân: NEU
+    - Đại học Ngoại thương: FTU
+    - Đại học Thương mại: TMU
+    - Đại học Luật Hà Nội: HLU
+    - Đại học sư phạm Hà Nội: HNUE
+    - Đại học Y Hà Nội: HMU
+    - Đại học Công nghiệp Hà Nội: HAUI
+    - Trường Đại học Luật - ĐHQG Hà Nội: LS(đối với local DB), VNU-UL(đối với web search)
+    - Trường Đại học Kinh tế - ĐHQG Hà Nội: UEB
+    - Trường Đại học Ngoại ngữ - ĐHQG Hà Nội: ULIS
+    - Trường Đại học Khoa học Xã hội và Nhân văn - ĐHQG Hà Nội: USSH
+    - Đại học Giao thông Vận tải: UTC
+    - Học viện Công nghệ Bưu chính Viễn thông: PTIT
+    - Học viện Kĩ thuật mật mã: ACT(đối với local DB), KMA(đối với web search)
+    - Học viện Báo chí và Tuyên truyền: AJC
+ 
+Ví dụ:
+user question: Điểm chuẩn Đại học Bách khoa Hà Nội. Với 28 điểm thì tôi nên chọn trường nào, có lưu ý gì không ?.
+- Bước 1: "Điểm chuẩn Đại học Bách khoa Hà Nội"
+- Bước 2: Phân tích
+  - Đối tượng: "Đại học Bách khoa Hà Nội".
+  - Thông tin cần tìm kiếm: "điểm chuẩn".
+- Bước 3: [
+  {
+    "query": "điểm chuẩn đại học bách khoa hà nội 2025",
+    "priority": 1.0,
+    "info": "điểm chuẩn của trường",
+    "school": "Đại học Bách khoa Hà Nội"
+  }
+]
+
+user question: Số tiến sĩ trường đại học công nghệ - uet và đại học bách khoa hà nội. Trường nào nhiều tiến sĩ hơn ?
+- Bước 1: "Số tiến sĩ trường đại học công nghệ - uet và đại học bách khoa hà nội"
+- Bước 2:
+  - Đối tượng: "Đại học công nghệ - uet", "đại học bách khoa hà nội"
+  - Thông tin cần tìm kiếm: "giảng viên", "danh sách giảng viên" (số Tiến sĩ của trường thì không thể tìm trực tiếp ra số tiến sĩ được, mà phải tìm "danh sách giảng viên của trường", từ thông tin danh sách giảng viên LLM sẽ đếm số tiến sĩ)
+- Bước 3: 
+```json
+[
+  {
+    "query": "danh sách giảng viên trường đại học công nghệ - uet",
+    "priority": 1.0,
+    "info": "thông tin giảng viên của trường",
+    "school": "đại học công nghệ - uet"
+  },
+  {
+    "query": "danh sách giảng viên trường đại học bách khoa hà nội",
+    "priority": 1.0,
+    "info": "thông tin giảng viên của trường",
+    "school": "đại học bách khoa hà nội"
+  }
+]
+```
+
+user question: Thủ khoa ngành trí tuệ nhân tạo UET 2025 là ai
+- Bước 1: "Thủ khoa ngành trí tuệ nhân tạo UET 2025"
+- Bước 2: Phân tích
+  - Đối tượng: "ngành Trí tuệ nhân tạo" (QUAN TRỌNG: "ngành" = chương trình đào tạo, không phải lĩnh vực nghiên cứu)
+  - Thông tin cần tìm kiếm: "thủ khoa", "thủ khoa tốt nghiệp"
+  - Lưu ý: Query PHẢI giữ từ "ngành" để tìm đúng chương trình đào tạo, không phải lĩnh vực nghiên cứu
+- Bước 3: [
+  {
+    "query": "thủ khoa ngành trí tuệ nhân tạo uet 2025",
+    "priority": 1.0,
+    "info": "thông tin về thủ khoa ngành trí tuệ nhân tạo năm 2025",
+    "school": "uet"
+  }
+]
+
+user question: Học phí kỳ 2 năm học 2024-2025 của sinh viên UET đóng ở đâu và hạn cuối là khi nào?
+- Bước 1: "Học phí kỳ 2 năm học 2024-2025 của sinh viên UET đóng ở đâu và hạn cuối là khi nào?"
+- Bước 2:
+  - Đối tượng: "UET", phạm vi "sinh viên đang học", nội dung "đóng học phí kỳ 2", "hạn cuối"
+  - PHẢI giữ nguyên cụm "kỳ 2 năm học 2024-2025", "đóng ở đâu", "hạn cuối"
+- Bước 3: [
+  {
+    "query": "thủ tục đóng học phí kỳ 2 năm học 2024-2025 uet hạn cuối",
+    "priority": 1.0,
+    "info": "hướng dẫn đóng học phí kỳ 2 và hạn nộp",
+    "school": "uet"
+  }
+]
+
+user question: Em cần đăng ký học lại học phần X vào học kỳ hè 2025 của UET thì phải làm sao?
+- Bước 1: "Đăng ký học lại học phần X vào học kỳ hè 2025 của UET"
+- Bước 2:
+  - Đối tượng: "UET", hành động "đăng ký học lại", thời gian "học kỳ hè 2025", môn "học phần X"
+  - Không được bỏ cụm "đăng ký học lại", "học kỳ hè 2025"
+- Bước 3: [
+  {
+    "query": "đăng ký học lại học kỳ hè 2025 uet hướng dẫn",
+    "priority": 1.0,
+    "info": "thủ tục đăng ký học lại học kỳ hè",
+    "school": "uet"
+  }
+]
+user question: điểm chuẩn ngành Khoa học máy tính khối A00 UET năm 2025
+INFO 05-24 14:43:49 [async_llm_engine.py:209] Added request ca165093dc004f4babed5851b245af3f.
+[RouterRetriever][TIME LLM] year_start=2025 year_end=2025 metric=y
+
+[DocumentQualityGate] STEP 1/3 - Send query to keyword extractor
+[DocumentQualityGate] Question: điểm chuẩn ngành Khoa học máy tính khối A00 PTIT năm 2025
+[VLLM] CallType.KEYWORDS | Instruction length: 168 | Prompt length: 8665 | kwargs: None
+
+================================================================================
+[LLM_CALL CallType.KEYWORDS]
+================================================================================
+{
+  "call_type": "CallType.KEYWORDS",
+  "model_id": "Qwen/Qwen3-4B$$$1",
+  "max_tokens": "[REDACTED]",
+  "temperature": 0.5,
+  "top_p": 0.9,
+  "top_k": 40,
+  "params": {
+    "model_id": "Qwen/Qwen3-4B$$$1",
+    "use_websearch": true,
+    "use_localdb": false,
+    "auto_source": true,
+    "max_query": 1,
+    "query_score_threshold": 0.5,
+    "engine_type": "google",
+    "domain_restrict": false,
+    "school_domain": false,
+    "llm_rerank": false,
+    "page_score_threshold": 0.5,
+    "chunk_score_threshold": 0.5,
+    "k_docs": 5,
+    "k_pages": 3,
+    "page_rerank": false,
+    "chunk_rerank": true,
+    "include_pdf": true,
+    "include_image": true,
+    "merge_table": false,
+    "merge_neighbor": false,
+    "enable_quality_gate": true,
+    "quality_log": true,
+    "max_tokens": "[REDACTED]",
+    "temperature": 0.5,
+    "top_p": 0.9,
+    "top_k": 40,
+    "max_history": 8,
+    "quality_min_score": 0.58,
+    "quality_min_relevance": 0.25,
+    "quality_min_trust": 0.5,
+    "quality_strict_mode": true,
+    "quality_max_docs": 3,
+    "source_safety_filter": true,
+    "quality_force_for_rich_media": true,
+    "hybrid_retrieval": true,
+    "auto_multi_hop": true,
+    "multi_hop_complexity_threshold": 2,
+    "reader_table_rescue_max_sources": 2,
+    "reader_table_rescue_max_chars": 6000,
+    "use_multi_hop": false,
+    "time_metric": "y",
+    "time_year_start": 2025,
+    "time_year_end": 2025
+  },
+  "instruction_chars": 168,
+  "prompt_chars": 8665
+}
+
+================================================================================
+[LLM_SYSTEM_PROMPT CallType.KEYWORDS]
+================================================================================
+Bạn là trợ lý chuyển đổi câu hỏi bằng ngôn ngữ tự nhiên của người dùng về trường đại học, tuyển sinh, khoa hoặc chương trình thành một tập hợp các truy vấn có cấu trúc.
+
+================================================================================
+[LLM_USER_PROMPT CallType.KEYWORDS]
+================================================================================
+Hiện tại là năm 2025.
+Nhiệm vụ: 
+Nhận một "user question" (tiếng Việt) liên quan đến tuyển sinh / thông tin đại học và sinh ra một danh sách các queries (mỗi query là một chuỗi plain text bằng tiếng Việt, không có filter hay operator như site: hoặc filetype:).
+Mỗi query phải ngắn gọn, cụ thể và tối ưu để tìm thông tin chính thức (thông báo tuyển sinh, điểm chuẩn, chỉ tiêu, phương thức, mã ngành, hồ sơ, học phí, lịch, liên hệ…).
+
+Các bước:
+- Bước 1: Xác định câu văn chứa thông tin cần tìm kiếm. 
+- Bước 2: Phân tích câu văn tìm được:
+  - Xác định rõ đối tượng nếu có: trường, ngành, viện, tổ chức, bộ môn, ...
+  - PHÂN BIỆT SEMANTIC QUAN TRỌNG:
+    * "ngành" = chương trình đào tạo (major/degree program) - ví dụ: "ngành Trí tuệ nhân tạo", "ngành Công nghệ thông tin"
+    * "lĩnh vực" = lĩnh vực nghiên cứu (research field) - ví dụ: "lĩnh vực trí tuệ nhân tạo", "nghiên cứu về AI"
+    * Khi câu hỏi có "ngành", query PHẢI giữ từ "ngành" để tìm đúng chương trình đào tạo, không phải lĩnh vực nghiên cứu
+  - Xác định thông tin cần tìm kiếm: điểm chuẩn, điểm xét tuyển, điểm sàn, danh sách giảng viên, địa chỉ, ...
+- Bước 3: Tạo query tìm kiếm:
+  - Định dạng của mỗi phần tử : 
+    {
+      "query": "<string>",
+      "priority": <float 0.0-1.0>,
+      "info": "<string>",
+      "school": "<string>"
+    }
+  - school: tên trường hoặc kí hiệu (ví dụ hust hoặc đại học bách khoa hà nội) viết thường toàn bộ (lower case), chuẩn hóa school (ví dụ chuyển “hust” → “hust”, “ĐH Bách Khoa Hà Nội” → “đại học bách khoa hà nội”). Nếu không thể xác định trường từ câu hỏi, để school là chuỗi rỗng "".
+  - query: kết hợp đối tượng và thông tin cần tìm kiếm để tạo query
+  - info: những thông tin mà query này sẽ cung cấp
+  - priority: float từ 0.0–1.0 — mức quan trọng/ưu tiên khi chạy tìm kiếm (1.0 = ưu tiên cao).
+- Bước 4: Nhận diện đúng PERSONA/Ý ĐỊNH (để chọn từ khóa chuẩn):
+  - **Nhóm học sinh phụ huynh (tuyển sinh):**
+    * Câu hỏi xoay quanh: điểm chuẩn, chỉ tiêu, mã ngành, phương thức xét tuyển, lịch tuyển sinh, so sánh trường/ngành, học phí tổng quan.
+    * Query phải chứa keywords chính thức (ví dụ: "điểm chuẩn ngành ... 2025", "chỉ tiêu tuyển sinh UET 2025").
+  - **Nhóm sinh viên đang học (học vụ, dịch vụ):**
+    * Câu hỏi xoay quanh: đăng ký tín chỉ, xin nghỉ học, học phí theo kỳ, thủ tục tốt nghiệp, lịch học lại, hỗ trợ học bổng, dịch vụ sinh viên.
+    * PHẢI giữ nguyên các cụm "kỳ", "học kỳ", "tín chỉ", "thủ tục", "đóng học phí", "liên hệ phòng ..." vì đây là tín hiệu quan trọng để tìm đúng thông báo nội bộ.
+
+Quy tắc tạo query:
+  - Tóm tắt câu hỏi thành từ khóa chính làm sao để khi tìm kiếm các trang hiện ra sẽ có chứa thông tin cần thiết để trả lời câu hỏi. Ví dụ như hỏi số Tiến sĩ của trường thì không thể tìm trực tiếp ra số tiến sĩ được, mà phải tìm "danh sách giảng viên của trường", từ thông tin danh sách giảng viên LLM sẽ đếm số tiến sĩ.
+  - QUAN TRỌNG: Phân biệt "ngành" (chương trình đào tạo) vs "lĩnh vực" (nghiên cứu):
+    * Nếu câu hỏi có "ngành X" → query PHẢI có "ngành X" để tìm đúng chương trình đào tạo
+    * Ví dụ: "thủ khoa ngành trí tuệ nhân tạo" → query: "thủ khoa ngành trí tuệ nhân tạo" (KHÔNG bỏ từ "ngành")
+    * Ví dụ: "nghiên cứu về trí tuệ nhân tạo" → query: "nghiên cứu trí tuệ nhân tạo" (không cần "ngành")
+  - Với câu hỏi học vụ (sinh viên), LUÔN giữ các cụm "học kỳ", "tín chỉ", "thủ tục", "đăng ký", "gia hạn", "phòng ban" vì các trang thông báo nội bộ phụ thuộc vào những từ này.
+  - Luôn cân nhắc năm/kỳ nếu user đề cập.
+  - Tạo phrasing khác nhau để tìm nguồn chính thức và nguồn phân tích (ví dụ: "Thông báo tuyển sinh + tên trường + năm", "Điểm chuẩn + tên ngành + năm", ...).
+  - Không dùng dấu ngoặc, toán tử tìm kiếm, hay domain-specific filter.
+  - Các query không được giống nhau, hoặc có nghĩa giống nhau, và phải cung cấp info khác nhau với mỗi query.
+ 
+Quy định cụ thể cho trường school:
+  - Nếu user nêu tên trường trong câu hỏi, dùng chính xác tên đó (không viết hoa) làm school. Ví dụ: "Đại học Bách Khoa Hà Nội" → "đại học bách khoa hà nội".
+  - Nếu user không nêu trường nhưng query vẫn liên quan đến một trường cụ thể (ví dụ user hỏi "ngành X của trường Y" thì dùng Y), đặt school tương ứng.
+  - Nếu user nêu nhiều trường trong một câu hỏi, cho phép tạo queries cho từng trường; mỗi query chỉ chứa 1 school tương ứng.
+ 
+Nguyên tắc xuất dữ liệu cuối:
+  - Tạo ra ít query nhất có thể
+  - Xuất chỉ một JSON array (list) gồm các object như mẫu trên, không thêm chú thích ngoài JSON.
+  - Tối thiểu 1 query, tối đa 1 queries.
+  - Sắp xếp queries theo priority giảm dần (cao nhất trước).
+  - Nếu user hỏi nhiều trường, có thể trả về queries cho từng trường (mỗi query gắn school tương ứng).
+ 
+Thông tin thêm:
+  Một số tên viết tắt phổ biến:
+    - Trường Đại học Công nghệ - ĐHQG Hà Nội: UET
+    - Trường Đại học Khoa học Tự nhiên - ĐHQG Hà Nội: HUS
+    - Đại học Bách khoa Hà Nội: HUST
+    - Đại học Kinh tế Quốc dân: NEU
+    - Đại học Ngoại thương: FTU
+    - Đại học Thương mại: TMU
+    - Đại học Luật Hà Nội: HLU
+    - Đại học sư phạm Hà Nội: HNUE
+    - Đại học Y Hà Nội: HMU
+    - Đại học Công nghiệp Hà Nội: HAUI
+    - Trường Đại học Luật - ĐHQG Hà Nội: LS(đối với local DB), VNU-UL(đối với web search)
+    - Trường Đại học Kinh tế - ĐHQG Hà Nội: UEB
+    - Trường Đại học Ngoại ngữ - ĐHQG Hà Nội: ULIS
+    - Trường Đại học Khoa học Xã hội và Nhân văn - ĐHQG Hà Nội: USSH
+    - Đại học Giao thông Vận tải: UTC
+    - Học viện Công nghệ Bưu chính Viễn thông: PTIT
+    - Học viện Kĩ thuật mật mã: ACT(đối với local DB), KMA(đối với web search)
+    - Học viện Báo chí và Tuyên truyền: AJC
+ 
+Ví dụ:
+user question: Điểm chuẩn Đại học Bách khoa Hà Nội. Với 28 điểm thì tôi nên chọn trường nào, có lưu ý gì không ?.
+- Bước 1: "Điểm chuẩn Đại học Bách khoa Hà Nội"
+- Bước 2: Phân tích
+  - Đối tượng: "Đại học Bách khoa Hà Nội".
+  - Thông tin cần tìm kiếm: "điểm chuẩn".
+- Bước 3: [
+  {
+    "query": "điểm chuẩn đại học bách khoa hà nội 2025",
+    "priority": 1.0,
+    "info": "điểm chuẩn của trường",
+    "school": "Đại học Bách khoa Hà Nội"
+  }
+]
+
+user question: Số tiến sĩ trường đại học công nghệ - uet và đại học bách khoa hà nội. Trường nào nhiều tiến sĩ hơn ?
+- Bước 1: "Số tiến sĩ trường đại học công nghệ - uet và đại học bách khoa hà nội"
+- Bước 2:
+  - Đối tượng: "Đại học công nghệ - uet", "đại học bách khoa hà nội"
+  - Thông tin cần tìm kiếm: "giảng viên", "danh sách giảng viên" (số Tiến sĩ của trường thì không thể tìm trực tiếp ra số tiến sĩ được, mà phải tìm "danh sách giảng viên của trường", từ thông tin danh sách giảng viên LLM sẽ đếm số tiến sĩ)
+- Bước 3: 
+```json
+[
+  {
+    "query": "danh sách giảng viên trường đại học công nghệ - uet",
+    "priority": 1.0,
+    "info": "thông tin giảng viên của trường",
+    "school": "đại học công nghệ - uet"
+  },
+  {
+    "query": "danh sách giảng viên trường đại học bách khoa hà nội",
+    "priority": 1.0,
+    "info": "thông tin giảng viên của trường",
+    "school": "đại học bách khoa hà nội"
+  }
+]
+```
+
+user question: Thủ khoa ngành trí tuệ nhân tạo UET 2025 là ai
+- Bước 1: "Thủ khoa ngành trí tuệ nhân tạo UET 2025"
+- Bước 2: Phân tích
+  - Đối tượng: "ngành Trí tuệ nhân tạo" (QUAN TRỌNG: "ngành" = chương trình đào tạo, không phải lĩnh vực nghiên cứu)
+  - Thông tin cần tìm kiếm: "thủ khoa", "thủ khoa tốt nghiệp"
+  - Lưu ý: Query PHẢI giữ từ "ngành" để tìm đúng chương trình đào tạo, không phải lĩnh vực nghiên cứu
+- Bước 3: [
+  {
+    "query": "thủ khoa ngành trí tuệ nhân tạo uet 2025",
+    "priority": 1.0,
+    "info": "thông tin về thủ khoa ngành trí tuệ nhân tạo năm 2025",
+    "school": "uet"
+  }
+]
+
+user question: Học phí kỳ 2 năm học 2024-2025 của sinh viên UET đóng ở đâu và hạn cuối là khi nào?
+- Bước 1: "Học phí kỳ 2 năm học 2024-2025 của sinh viên UET đóng ở đâu và hạn cuối là khi nào?"
+- Bước 2:
+  - Đối tượng: "UET", phạm vi "sinh viên đang học", nội dung "đóng học phí kỳ 2", "hạn cuối"
+  - PHẢI giữ nguyên cụm "kỳ 2 năm học 2024-2025", "đóng ở đâu", "hạn cuối"
+- Bước 3: [
+  {
+    "query": "thủ tục đóng học phí kỳ 2 năm học 2024-2025 uet hạn cuối",
+    "priority": 1.0,
+    "info": "hướng dẫn đóng học phí kỳ 2 và hạn nộp",
+    "school": "uet"
+  }
+]
+
+user question: Em cần đăng ký học lại học phần X vào học kỳ hè 2025 của UET thì phải làm sao?
+- Bước 1: "Đăng ký học lại học phần X vào học kỳ hè 2025 của UET"
+- Bước 2:
+  - Đối tượng: "UET", hành động "đăng ký học lại", thời gian "học kỳ hè 2025", môn "học phần X"
+  - Không được bỏ cụm "đăng ký học lại", "học kỳ hè 2025"
+- Bước 3: [
+  {
+    "query": "đăng ký học lại học kỳ hè 2025 uet hướng dẫn",
+    "priority": 1.0,
+    "info": "thủ tục đăng ký học lại học kỳ hè",
+    "school": "uet"
+  }
+]
+user question: điểm chuẩn ngành Khoa học máy tính khối A00 PTIT năm 2025
+INFO 05-24 14:43:49 [async_llm_engine.py:209] Added request 857b41b1fb4a42249a58c53a39b9781c.
+INFO 05-24 14:43:53 [async_llm_engine.py:177] Finished request df7b9d84bc8242e29d2ea3bbf2a9a6e7.
+[Model] [
+  {
+    "query": "học phí ngành khoa học máy tính uet 2025",
+    "priority": 1.0,
+    "info": "học phí của ngành khoa học máy tính năm 2025",
+    "school": "uet"
+  }
+]
+[Model] {'query': 'học phí ngành khoa học máy tính uet 2025', 'priority': 1.0, 'info': 'học phí của ngành khoa học máy tính năm 2025', 'school': 'uet'}
+[DocumentQualityGate] Extracted queries (1): ['học phí ngành khoa học máy tính uet 2025']
+[DocumentQualityGate] STEP 2/3 - Run web search
+[Retriever] Manual llm_rerank=OFF (query_count=1)
+[Retriever] Manual chunk_rerank=ON (query_count=1)
+INFO 05-24 14:43:53 [async_llm_engine.py:177] Finished request 0dafa6695d374df79bcc2ea1c2e57e1e.
+[Model] [
+  {
+    "query": "học phí ngành khoa học máy tính ptit 2025",
+    "priority": 1.0,
+    "info": "học phí của ngành khoa học máy tính tại ptit năm 2025",
+    "school": "ptit"
+  }
+]
+[Model] {'query': 'học phí ngành khoa học máy tính ptit 2025', 'priority': 1.0, 'info': 'học phí của ngành khoa học máy tính tại ptit năm 2025', 'school': 'ptit'}
+[DocumentQualityGate] Extracted queries (1): ['học phí ngành khoa học máy tính ptit 2025']
+[DocumentQualityGate] STEP 2/3 - Run web search
+[Retriever] Manual llm_rerank=OFF (query_count=1)
+[Retriever] Manual chunk_rerank=ON (query_count=1)
+[Retriever] Websearch: 0.14530s
+[Retriever] Rerank: Skip (llm_rerank=False)
+[Retriever] Snippet Check: 0.00026s
+[Retriever] [Download] Crawling 3 URLs (from 10 candidates)...
+[Page download] Chi tao 3 jobs (k_pages=3, total_urls=10)
+[Page download] Attempt to download 3 pages from 3 urls (PARALLEL, tối đa 3 request cùng lúc)
+[Page download] Cache hit: https://vnexpress.net/hoc-phi-dai-hoc-cong-nghe-nam-2025-202...
+INFO 05-24 14:43:53 [async_llm_engine.py:177] Finished request ca165093dc004f4babed5851b245af3f.
+INFO 05-24 14:43:53 [async_llm_engine.py:177] Finished request 857b41b1fb4a42249a58c53a39b9781c.
+[Model] [
+  {
+    "query": "điểm chuẩn ngành khoa học máy tính khối a00 uet 2025",
+    "priority": 1.0,
+    "info": "điểm chuẩn của ngành Khoa học máy tính khối A00 năm 2025",
+    "school": "uet"
+  }
+]
+[Model] {'query': 'điểm chuẩn ngành khoa học máy tính khối a00 uet 2025', 'priority': 1.0, 'info': 'điểm chuẩn của ngành Khoa học máy tính khối A00 năm 2025', 'school': 'uet'}
+[DocumentQualityGate] Extracted queries (1): ['điểm chuẩn ngành khoa học máy tính khối a00 uet 2025']
+[DocumentQualityGate] STEP 2/3 - Run web search
+[Retriever] Manual llm_rerank=OFF (query_count=1)
+[Retriever] Manual chunk_rerank=ON (query_count=1)
+[Model] [
+  {
+    "query": "điểm chuẩn ngành khoa học máy tính khối a00 ptit 2025",
+    "priority": 1.0,
+    "info": "điểm chuẩn ngành khoa học máy tính khối a00 năm 2025",
+    "school": "ptit"
+  }
+]
+[Model] {'query': 'điểm chuẩn ngành khoa học máy tính khối a00 ptit 2025', 'priority': 1.0, 'info': 'điểm chuẩn ngành khoa học máy tính khối a00 năm 2025', 'school': 'ptit'}
+[DocumentQualityGate] Extracted queries (1): ['điểm chuẩn ngành khoa học máy tính khối a00 ptit 2025']
+[DocumentQualityGate] STEP 2/3 - Run web search
+[Retriever] Manual llm_rerank=OFF (query_count=1)
+[Retriever] Manual chunk_rerank=ON (query_count=1)
+[Retriever] Websearch: 0.02803s
+[Retriever] Rerank: Skip (llm_rerank=False)
+[Retriever] Snippet Check: 0.00019s
+[Retriever] [Download] Crawling 3 URLs (from 10 candidates)...
+[Page download] Chi tao 3 jobs (k_pages=3, total_urls=10)
+[Page download] Attempt to download 3 pages from 3 urls (PARALLEL, tối đa 3 request cùng lúc)
+[Retriever] Websearch: 0.25756s
+[Retriever] Rerank: Skip (llm_rerank=False)
+[Retriever] Snippet Check: 0.00023s
+[Retriever] [Download] Crawling 3 URLs (from 10 candidates)...
+[Page download] Chi tao 3 jobs (k_pages=3, total_urls=10)
+[Page download] Attempt to download 3 pages from 3 urls (PARALLEL, tối đa 3 request cùng lúc)
+[Page download] Cache hit: https://diemthi.tuyensinh247.com/diem-chuan/dai-hoc-cong-ngh...
+[Retriever] Websearch: 0.04600s
+[Retriever] Rerank: Skip (llm_rerank=False)
+[Retriever] Snippet Check: 0.00015s
+[Retriever] [Download] Crawling 3 URLs (from 10 candidates)...
+[Page download] Chi tao 3 jobs (k_pages=3, total_urls=10)
+[Page download] Attempt to download 3 pages from 3 urls (PARALLEL, tối đa 3 request cùng lúc)
+[Page download] Error 401 via ScrapingBee: https://uet.vnu.edu.vn/thong-bao-tuyen-sinh-dao-tao-thac-si-...
+[Page download] ScrapingBee error details: {"message":"Monthly API calls limit reached: 1000"}
+
+[Page download] Tổng requests đã gửi: 8 (bao gồm cả cancelled)
+[Page download] Success: 2/3 pages
+[Page download] Credits: 17 (regular: 7, premium: 1x10)
+[Retriever] [Download] Snippet: 0, Crawled: 2 in 0.62s
+[Retriever] Process: 0.01326s
+Split THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo: 156 chars -> 1 chunks
+Split Học phí trường Đại học Công nghệ cao nhất 40 triệu đồng: 1453 chars -> 1 chunks
+[ChunkRanker] Query: học phí ngành khoa học máy tính uet 2025...
+[ChunkRanker] Input chunks: 1
+[ChunkRanker] Query: học phí ngành khoa học máy tính uet 2025...
+[ChunkRanker] Input chunks: 1
+[Page download] Error 401 via ScrapingBee: https://tuyensinh.ptit.edu.vn/thong-bao-tuyen-sinh-trinh-do-...
+[Page download] ScrapingBee error details: {"message":"Monthly API calls limit reached: 1000"}
+
+[Page download] Error 401 via ScrapingBee: https://giaovu.ptit.edu.vn/xet-tuyen-chuong-trinh-sinh-vien-...
+[Page download] ScrapingBee error details: {"message":"Monthly API calls limit reached: 1000"}
+
+[Page download] Error 401 via ScrapingBee: https://ptit.edu.vn/diem-chuan-trung-tuyen-vao-dai-hoc-he-ch...
+[Page download] ScrapingBee error details: {"message":"Monthly API calls limit reached: 1000"}
+
+[Page download] Error 401 via ScrapingBee: https://diemthi.tuyensinh247.com/diem-chuan/hoc-vien-cong-ng...
+[Page download] ScrapingBee error details: {"message":"Monthly API calls limit reached: 1000"}
+
+[ChunkRanker] Max score: 0.0340, Threshold: 0.0170 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.0340 (KEEP) | [THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo...
+[ChunkRanker] Output chunks: 1 (filtered 0)
+[ChunkRanker] Max score: 0.9198, Threshold: 0.4599 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.9198 (KEEP) | Trường Đại học Công nghệ, Đại học Quốc gia Hà Nội (VNU-UET) ...
+[ChunkRanker] Output chunks: 1 (filtered 0)
+[Retriever] RAG: 0.23469s
+[Page download] Error 401 via ScrapingBee: https://giaovu.ptit.edu.vn/xet-tuyen-chuong-trinh-sinh-vien-...
+[Page download] ScrapingBee error details: {"message":"Monthly API calls limit reached: 1000"}
+
+[Page download] Error 401 via ScrapingBee: https://ptit.edu.vn/diem-chuan-trung-tuyen-vao-dai-hoc-he-ch...
+[Page download] ScrapingBee error details: {"message":"Monthly API calls limit reached: 1000"}
+
+[Retriever] [ChunkProcessor] 2 -> 1 chunks (queries=1)
+[DocumentQualityGate] Raw retrieve -> web_sources=2, rag_sources=1
+
+[DocumentQualityGate] STEP 3/3 - Validate and score web documents
+[DocumentQualityGate] Thresholds -> final_score>=0.58, relevance>=0.25, trust>=0.50, strict_mode=True
+[DocumentQualityGate] [01] PASS | final=0.950 (rel=0.889, trust=1.000, fresh=1.000, rich=1.000, spam=0.000) | title=THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo | url=https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf
+[DocumentQualityGate] [02] PASS | final=0.650 (rel=0.444, trust=0.600, fresh=1.000, rich=1.000, spam=0.000) | title=Học phí trường Đại học Công nghệ cao nhất 40 triệu đồng | url=https://vnexpress.net/hoc-phi-dai-hoc-cong-nghe-nam-2025-2026-4894143.html
+[DocumentQualityGate] Result -> web_sources=2/2, rag_sources=1/1, max_docs_after_gate=3
+[MultiHop]   SQ#3 fallback-result: web=2 rag=1 localdb=False websearch=True
+
+================================================================================
+[FACT_EXTRACTOR_INPUT]
+================================================================================
+{
+  "question": "học phí ngành Khoa học máy tính UET năm 2025",
+  "evidence_type": "numeric",
+  "source_count": 1,
+  "selected_count": 1,
+  "selected_sources": [
+    {
+      "title": "THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo",
+      "url": "https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf",
+      "chunk_index": 0,
+      "text_chars": 156
+    }
+  ]
+}
+[VLLM] fact_extractor | Instruction length: 179 | Prompt length: 533 | kwargs: None
+
+================================================================================
+[LLM_CALL fact_extractor]
+================================================================================
+{
+  "call_type": "fact_extractor",
+  "model_id": "Qwen/Qwen3-4B$$$1",
+  "max_tokens": "[REDACTED]",
+  "temperature": 0.2,
+  "top_p": 0.9,
+  "top_k": 40,
+  "params": {
+    "model_id": "Qwen/Qwen3-4B$$$1",
+    "use_websearch": true,
+    "use_localdb": true,
+    "auto_source": true,
+    "max_query": 3,
+    "query_score_threshold": 0.5,
+    "engine_type": "google",
+    "domain_restrict": false,
+    "school_domain": false,
+    "llm_rerank": false,
+    "page_score_threshold": 0.5,
+    "chunk_score_threshold": 0.5,
+    "k_docs": 5,
+    "k_pages": 3,
+    "page_rerank": false,
+    "chunk_rerank": true,
+    "include_pdf": true,
+    "include_image": true,
+    "merge_table": false,
+    "merge_neighbor": false,
+    "enable_quality_gate": true,
+    "quality_log": true,
+    "max_tokens": "[REDACTED]",
+    "temperature": 0.2,
+    "top_p": 0.9,
+    "top_k": 40,
+    "max_history": 8,
+    "quality_min_score": 0.58,
+    "quality_min_relevance": 0.25,
+    "quality_min_trust": 0.5,
+    "quality_strict_mode": true,
+    "quality_max_docs": 3,
+    "source_safety_filter": true,
+    "quality_force_for_rich_media": true,
+    "hybrid_retrieval": true,
+    "auto_multi_hop": true,
+    "multi_hop_complexity_threshold": 2,
+    "reader_table_rescue_max_sources": 2,
+    "reader_table_rescue_max_chars": 6000
+  },
+  "instruction_chars": 179,
+  "prompt_chars": 533
+}
+
+================================================================================
+[LLM_SYSTEM_PROMPT fact_extractor]
+================================================================================
+Bạn là trợ lý trích xuất sự kiện ngắn gọn từ tài liệu. Đọc các đoạn dưới đây và trả lời CÂU HỎI bằng 1 câu ngắn (<= 25 từ). Nếu tài liệu KHÔNG chứa câu trả lời, trả về chuỗi rỗng.
+
+================================================================================
+[LLM_USER_PROMPT fact_extractor]
+================================================================================
+Câu hỏi: học phí ngành Khoa học máy tính UET năm 2025
+
+Các đoạn liên quan:
+### Source 1: THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo | https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf
+[THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo](https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf)
+
+Trả về JSON:
+```json
+{"answer": "<câu trả lời ngắn gọn hoặc rỗng>", "confidence": <float 0.0-1.0>}
+```
+Chỉ JSON, không giải thích.
+INFO 05-24 14:43:54 [async_llm_engine.py:209] Added request af16eb6b1e42455f9e9cc1e02c8458d5.
+[Page download] Error 401 via ScrapingBee: https://diemthi.tuyensinh247.com/diem-chuan/hoc-vien-cong-ng...
+[Page download] ScrapingBee error details: {"message":"Monthly API calls limit reached: 1000"}
+
+INFO 05-24 14:43:54 [metrics.py:386] Avg prompt throughput: 1143.9 tokens/s, Avg generation throughput: 54.0 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 0.7%, CPU KV cache usage: 0.0%.
+[Page download] Error 401 via ScrapingBee: https://vnexpress.net/diem-chuan-dai-hoc-cong-nghe-uet-2025-...
+[Page download] ScrapingBee error details: {"message":"Monthly API calls limit reached: 1000"}
+
+[Page download] Error 401 via ScrapingBee: https://tuyensinh.ptit.edu.vn/de-an-tuyen-sinh/thong-tin-tuy...
+[Page download] ScrapingBee error details: {"message":"Monthly API calls limit reached: 1000"}
+
+[Page download] Error 401 via ScrapingBee: https://ptit.edu.vn/pho-giam-doc-ptit-diem-chuan-quy-doi-chi...
+[Page download] ScrapingBee error details: {"message":"Monthly API calls limit reached: 1000"}
+
+[Page download] Error 401 via ScrapingBee: https://vnexpress.net/diem-chuan-dai-hoc-cong-nghe-uet-2025-...
+[Page download] ScrapingBee error details: {"message":"Monthly API calls limit reached: 1000"}
+
+[Page download] Tổng requests đã gửi: 11 (bao gồm cả cancelled)
+[Page download] Success: 2/3 pages
+[Page download] Credits: 74 (regular: 4, premium: 7x10)
+[Retriever] [Download] Snippet: 0, Crawled: 2 in 0.76s
+[Retriever] Process: 0.05307s
+[Page download] Error 401 via ScrapingBee: https://tuyensinh.ptit.edu.vn/thong-bao-tuyen-sinh-trinh-do-...
+[Page download] ScrapingBee error details: {"message":"Monthly API calls limit reached: 1000"}
+
+[Page download] Tổng requests đã gửi: 14 (bao gồm cả cancelled)
+[Page download] Success: 0/3 pages
+[Page download] Credits: 77 (regular: 7, premium: 7x10)
+[Retriever] [Download] Snippet: 0, Crawled: 0 in 1.08s
+[Retriever] Process: 0.00002s
+[Retriever] RAG: 0.00001s
+[Retriever] [ChunkProcessor] 0 -> 0 chunks (queries=1)
+[DocumentQualityGate] Raw retrieve -> web_sources=0, rag_sources=0
+
+[DocumentQualityGate] STEP 3/3 - Validate and score web documents
+[DocumentQualityGate] Thresholds -> final_score>=0.58, relevance>=0.25, trust>=0.50, strict_mode=True
+[DocumentQualityGate] Result -> web_sources=0/0, rag_sources=0/0, max_docs_after_gate=3
+[MultiHop]   SQ#4 fallback-result: web=0 rag=0 localdb=False websearch=True
+  ✓ SQ#4 DONE  web=0 rag=0 conf=0.00
+      Fact[4]: (none)
+
+================================================================================
+[SQ4_WEB_SOURCES] count=0 text_limit=0 (0=full)
+================================================================================
+(empty)
+
+================================================================================
+[SQ4_RAG_CHUNKS] count=0 text_limit=0 (0=full)
+================================================================================
+(empty)
+Split THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo: 156 chars -> 1 chunks
+Split Đại Học Quốc Gia Hà Nội 2025 chính xác: 6035 chars -> 13 chunks
+[Page download] Error 401 via ScrapingBee: https://tuyensinh.ptit.edu.vn/de-an-tuyen-sinh/thong-tin-tuy...
+[Page download] ScrapingBee error details: {"message":"Monthly API calls limit reached: 1000"}
+
+[ChunkRanker] Query: điểm chuẩn ngành khoa học máy tính khối a00 uet 2025...
+[ChunkRanker] Input chunks: 1
+[Retriever] [Prioritize] Added 3 table chunks before retrieval output
+[ChunkRanker] Query: điểm chuẩn ngành khoa học máy tính khối a00 uet 2025...
+[ChunkRanker] Input chunks: 6
+[Page download] Error 401 via ScrapingBee: https://ptit.edu.vn/pho-giam-doc-ptit-diem-chuan-quy-doi-chi...
+[Page download] ScrapingBee error details: {"message":"Monthly API calls limit reached: 1000"}
+
+[Page download] Tổng requests đã gửi: 10 (bao gồm cả cancelled)
+[Page download] Success: 0/3 pages
+[Page download] Credits: 73 (regular: 3, premium: 7x10)
+[Retriever] [Download] Snippet: 0, Crawled: 0 in 1.43s
+[Retriever] Process: 0.00002s
+[Retriever] RAG: 0.00000s
+[Retriever] [ChunkProcessor] 0 -> 0 chunks (queries=1)
+[DocumentQualityGate] Raw retrieve -> web_sources=0, rag_sources=0
+
+[DocumentQualityGate] STEP 3/3 - Validate and score web documents
+[DocumentQualityGate] Thresholds -> final_score>=0.58, relevance>=0.25, trust>=0.50, strict_mode=True
+[DocumentQualityGate] Result -> web_sources=0/0, rag_sources=0/0, max_docs_after_gate=3
+[MultiHop]   SQ#2 fallback-result: web=0 rag=0 localdb=False websearch=True
+  ✓ SQ#2 DONE  web=0 rag=0 conf=0.00
+      Fact[2]: (none)
+
+================================================================================
+[SQ2_WEB_SOURCES] count=0 text_limit=0 (0=full)
+================================================================================
+(empty)
+
+================================================================================
+[SQ2_RAG_CHUNKS] count=0 text_limit=0 (0=full)
+================================================================================
+(empty)
+[ChunkRanker] Max score: 0.0279, Threshold: 0.0139 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.0279 (KEEP) | [THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo...
+[ChunkRanker] Output chunks: 1 (filtered 0)
+[ChunkRanker] Max score: 0.9497, Threshold: 0.4749 (relative)
+[ChunkRanker] Top chunks by score:
+  [1] 0.9497 (KEEP) | | Khoa học máy tính | A00; A01; X06; X26; D01 | 27.86 |  |  ...
+  [2] 0.4418 (DROP) | [BANG] |Tên ngành|Tổ hợp môn|Điểm chuẩn|Ghi chú| |---|---|--...
+  [3] 0.3397 (DROP) | | Kỹ thuật Robot | A00; A01; X06; X26; D01 | 26 |  |  |  | |...
+  [4] 0.0781 (DROP) | [BANG] |Tên ngành|Tổ hợp môn|Điểm chuẩn|Ghi chú| |---|---|--...
+  [5] 0.0122 (DROP) | #### Điểm chuẩn Trường Đại Học Công Nghệ – Đại Học Quốc Gia ...
+[ChunkRanker] Output chunks: 1 (filtered 5)
+[Retriever] [Prioritize] Restored 3 table chunks after chunk rerank
+[Retriever] RAG: 0.51669s
+[Retriever] [ChunkProcessor] 5 -> 1 chunks (queries=1)
+[DocumentQualityGate] Raw retrieve -> web_sources=2, rag_sources=1
+
+[DocumentQualityGate] STEP 3/3 - Validate and score web documents
+[DocumentQualityGate] Thresholds -> final_score>=0.58, relevance>=0.25, trust>=0.50, strict_mode=True
+[DocumentQualityGate] [01] PASS | final=0.675 (rel=0.500, trust=0.600, fresh=1.000, rich=1.000, spam=0.000) | title=Đại Học Quốc Gia Hà Nội 2025 chính xác | url=https://diemthi.tuyensinh247.com/diem-chuan/dai-hoc-cong-nghe-dai-hoc-quoc-gia-ha-noi-QHI.html
+[DocumentQualityGate] [02] PASS | final=0.700 (rel=0.333, trust=1.000, fresh=1.000, rich=1.000, spam=0.000) | title=THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo | url=https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf
+[DocumentQualityGate] Result -> web_sources=2/2, rag_sources=1/1, max_docs_after_gate=3
+[MultiHop]   SQ#1 fallback-result: web=2 rag=1 localdb=False websearch=True
+
+================================================================================
+[FACT_EXTRACTOR_INPUT]
+================================================================================
+{
+  "question": "điểm chuẩn ngành Khoa học máy tính khối A00 UET năm 2025",
+  "evidence_type": "numeric",
+  "source_count": 1,
+  "selected_count": 1,
+  "selected_sources": [
+    {
+      "title": "Đại Học Quốc Gia Hà Nội 2025 chính xác",
+      "url": "https://diemthi.tuyensinh247.com/diem-chuan/dai-hoc-cong-nghe-dai-hoc-quoc-gia-ha-noi-QHI.html",
+      "chunk_index": 3,
+      "text_chars": 960
+    }
+  ]
+}
+[VLLM] fact_extractor | Instruction length: 179 | Prompt length: 1329 | kwargs: None
+
+================================================================================
+[LLM_CALL fact_extractor]
+================================================================================
+{
+  "call_type": "fact_extractor",
+  "model_id": "Qwen/Qwen3-4B$$$1",
+  "max_tokens": "[REDACTED]",
+  "temperature": 0.2,
+  "top_p": 0.9,
+  "top_k": 40,
+  "params": {
+    "model_id": "Qwen/Qwen3-4B$$$1",
+    "use_websearch": true,
+    "use_localdb": true,
+    "auto_source": true,
+    "max_query": 3,
+    "query_score_threshold": 0.5,
+    "engine_type": "google",
+    "domain_restrict": false,
+    "school_domain": false,
+    "llm_rerank": false,
+    "page_score_threshold": 0.5,
+    "chunk_score_threshold": 0.5,
+    "k_docs": 5,
+    "k_pages": 3,
+    "page_rerank": false,
+    "chunk_rerank": true,
+    "include_pdf": true,
+    "include_image": true,
+    "merge_table": false,
+    "merge_neighbor": false,
+    "enable_quality_gate": true,
+    "quality_log": true,
+    "max_tokens": "[REDACTED]",
+    "temperature": 0.2,
+    "top_p": 0.9,
+    "top_k": 40,
+    "max_history": 8,
+    "quality_min_score": 0.58,
+    "quality_min_relevance": 0.25,
+    "quality_min_trust": 0.5,
+    "quality_strict_mode": true,
+    "quality_max_docs": 3,
+    "source_safety_filter": true,
+    "quality_force_for_rich_media": true,
+    "hybrid_retrieval": true,
+    "auto_multi_hop": true,
+    "multi_hop_complexity_threshold": 2,
+    "reader_table_rescue_max_sources": 2,
+    "reader_table_rescue_max_chars": 6000
+  },
+  "instruction_chars": 179,
+  "prompt_chars": 1329
+}
+
+================================================================================
+[LLM_SYSTEM_PROMPT fact_extractor]
+================================================================================
+Bạn là trợ lý trích xuất sự kiện ngắn gọn từ tài liệu. Đọc các đoạn dưới đây và trả lời CÂU HỎI bằng 1 câu ngắn (<= 25 từ). Nếu tài liệu KHÔNG chứa câu trả lời, trả về chuỗi rỗng.
+
+================================================================================
+[LLM_USER_PROMPT fact_extractor]
+================================================================================
+Câu hỏi: điểm chuẩn ngành Khoa học máy tính khối A00 UET năm 2025
+
+Các đoạn liên quan:
+### Source 1: Đại Học Quốc Gia Hà Nội 2025 chính xác | https://diemthi.tuyensinh247.com/diem-chuan/dai-hoc-cong-nghe-dai-hoc-quoc-gia-ha-noi-QHI.html
+[BANG]
+|Tên ngành|Tổ hợp môn|Điểm chuẩn|Ghi chú|
+|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
+| Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến |
+| Công nghệ thông tin | A00; A01; X06; X26; D01 | 28.19 |  |  |  |
+| Công nghệ nông nghiệp | A00; A01; X06; X26; D01; B00 | 22 |  |  |  |
+| Kỹ thuật điều khiển và tự động hóa | A00; A01; X06; X26; D01 | 27.9 |  |  |  |
+| Trí tuệ nhân tạo | A00; A01; X06; X26; D01 | 27.75 |  |  |  |
+| Kỹ thuật năng lượng | A00; A01; X06; X26; D01 | 24.87 |  |  |  |
+| Hệ thống thông tin | A00; A01; X06; X26; D01 | 26.38 |  |  |  |
+| Mạng máy tính và truyền thông dữ liệu | A00; A01; X06; X26; D01 | 26.73 |  |  |  |
+| Kỹ thuật Robot | A00; A01; X06; X26; D01 | 26 |  |  |  |
+
+Trả về JSON:
+```json
+{"answer": "<câu trả lời ngắn gọn hoặc rỗng>", "confidence": <float 0.0-1.0>}
+```
+Chỉ JSON, không giải thích.
+INFO 05-24 14:43:56 [async_llm_engine.py:209] Added request 68a1747c1a0849a0826da07f46a7c797.
+INFO 05-24 14:43:56 [async_llm_engine.py:177] Finished request af16eb6b1e42455f9e9cc1e02c8458d5.
+
+================================================================================
+[FACT_EXTRACTOR_RAW_OUTPUT]
+================================================================================
+{"answer": "Học phí ngành Khoa học máy tính UET năm 2025 chưa được nêu rõ.", "confidence": 0.8}
+
+================================================================================
+[FACT_EXTRACTOR_PARSED]
+================================================================================
+{
+  "answer": "Học phí ngành Khoa học máy tính UET năm 2025 chưa được nêu rõ.",
+  "confidence": 0.8
+}
+  ✓ SQ#3 DONE  web=2 rag=1 conf=0.80
+      Fact[3]: Học phí ngành Khoa học máy tính UET năm 2025 chưa được nêu rõ.
+
+================================================================================
+[SQ3_WEB_SOURCES] count=2 text_limit=0 (0=full)
+================================================================================
+--------------------------------------------------------------------------------
+{
+  "index": 1,
+  "title": "THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo",
+  "url": "https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf",
+  "query": "học phí ngành khoa học máy tính uet 2025",
+  "score": 1,
+  "chunk_index": null,
+  "text_chars": 156
+}
+[SOURCE_TEXT]
+[THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo](https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf)
+--------------------------------------------------------------------------------
+{
+  "index": 2,
+  "title": "Học phí trường Đại học Công nghệ cao nhất 40 triệu đồng",
+  "url": "https://vnexpress.net/hoc-phi-dai-hoc-cong-nghe-nam-2025-2026-4894143.html",
+  "query": "học phí trường đại học công nghệ - đhqgHN năm học 2025-2026",
+  "score": 1,
+  "chunk_index": null,
+  "text_chars": 1453
+}
+[SOURCE_TEXT]
+Trường Đại học Công nghệ, Đại học Quốc gia Hà Nội (VNU-UET) ngày 3/6 thông báo tuyển 4.020 sinh viên cho 20 ngành và chương trình.
+Trường chia học phí theo hai mức là 34 và 40 triệu đồng cho năm học 2025-2026. Đa số ngành giữ nguyên so với năm ngoái. Hai ngành tăng 2 triệu đồng, lên mức 34 triệu, là Trí tuệ nhân tạo, Thiết kế công nghiệp và đồ họa. Hai ngành tăng 8 triệu đồng, lên mức 40 triệu, là Công nghệ nông nghiệp và Kỹ thuật điều khiển và tự động hóa.
+Học phí các ngành của trường Đại học Công nghệ cụ thể như sau:
+4 phương thức xét tuyển của trường Đại học Công nghệ gồm: xét tuyển thẳng, dựa vào kết quả thi tốt nghiệp, thi đánh giá năng lực của Đại học Quốc gia Hà Nội (HSA) và chứng chỉ SAT.
+Với xét điểm thi tốt nghiệp, trường dùng 5 tổ hợp: A00 (Toán, Lý, Hoá), A01 (Toán, Lý, Anh), X26 (Toán, Anh, Tin), X06 (Toán, Lý, Tin), D01 (Toán hệ số 2, Văn, Anh). Riêng ngành Công nghệ nông nghiệp và Công nghệ sinh học dùng thêm tổ hợp B00 (Toán, Hoá, Sinh). Trường cũng cho biết sẽ dừng tuyển khối D01 từ năm sau.
+Thí sinh có chứng chỉ IELTS 5.5 hoặc TOEFL iBT 72 điểm trở lên sẽ được quy đổi thành điểm môn tiếng Anh trong tổ hợp, với mức quy đổi từ 8,5/10.
+Chỉ tiêu, phương thức xét tuyển từng ngành:
+Năm ngoái, điểm chuẩn trường Đại học Công nghệ, Đại học Quốc gia Hà Nội, xét theo điểm thi tốt nghiệp THPT là 22,5-27,8, ngành Công nghệ thông tin cao nhất.
+Sinh viên trường Đại học Công nghệ, Đại học Quốc gia Hà Nội. Ảnh: VNU-UET
+Dương Tâm
+
+================================================================================
+[SQ3_RAG_CHUNKS] count=1 text_limit=0 (0=full)
+================================================================================
+--------------------------------------------------------------------------------
+{
+  "index": 1,
+  "title": "THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo",
+  "url": "https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf",
+  "query": "học phí ngành khoa học máy tính uet 2025",
+  "score": null,
+  "chunk_index": 0,
+  "text_chars": 156
+}
+[SOURCE_TEXT]
+[THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo](https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf)
+INFO 05-24 14:43:57 [async_llm_engine.py:177] Finished request 68a1747c1a0849a0826da07f46a7c797.
+
+================================================================================
+[FACT_EXTRACTOR_RAW_OUTPUT]
+================================================================================
+{"answer": "28.19", "confidence": 1.0}
+
+================================================================================
+[FACT_EXTRACTOR_PARSED]
+================================================================================
+{
+  "answer": "28.19",
+  "confidence": 1.0
+}
+  ✓ SQ#1 DONE  web=2 rag=1 conf=1.00
+      Fact[1]: 28.19
+
+================================================================================
+[SQ1_WEB_SOURCES] count=2 text_limit=0 (0=full)
+================================================================================
+--------------------------------------------------------------------------------
+{
+  "index": 1,
+  "title": "THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo",
+  "url": "https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf",
+  "query": "điểm chuẩn ngành khoa học máy tính khối a00 uet 2025",
+  "score": 1,
+  "chunk_index": null,
+  "text_chars": 156
+}
+[SOURCE_TEXT]
+[THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo](https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf)
+--------------------------------------------------------------------------------
+{
+  "index": 2,
+  "title": "Đại Học Quốc Gia Hà Nội 2025 chính xác",
+  "url": "https://diemthi.tuyensinh247.com/diem-chuan/dai-hoc-cong-nghe-dai-hoc-quoc-gia-ha-noi-QHI.html",
+  "query": "điểm chuẩn trường đại học công nghệ đại học quốc gia hà nội 2025",
+  "score": 1,
+  "chunk_index": null,
+  "text_chars": 6035
+}
+[SOURCE_TEXT]
+Tìm kiếm trường
+Nhập tên trường/mã trường _
+# Điểm chuẩn Trường Đại Học Công Nghệ – Đại Học Quốc Gia Hà Nội 2025 chính xác
+Điểm chuẩn trường UET - Đại Học Công nghệ - ĐHQG Hà Nội năm 2025
+Điểm chuẩn UET - Đại học Công nghệ - ĐHQGHN năm 2025 đã được công bố đến tất cả thí sinh ngày 22/08.
+Điểm trúng tuyển (điểm chuẩn) của một ngành là như nhau giữa các tổ hợp xét tuyển, được xác định trên cơ sở điểm xét tuyển (theo thang điểm 30) và làm tròn đến hai chữ số thập phân.
+Chú ý: Điểm chuẩn dưới đây là tổng điểm các môn xét tuyển + điểm ưu tiên nếu có Click vào phương thức để xem nhanh điểm chuẩn của phương thức đó
+- ✯ Điểm thi THPT
+- ✯ Điểm ĐGNL HN
+- ✯ Chứng chỉ quốc tế
+### Điểm chuẩn theo phương thức Điểm thi THPT năm 2025
+
+[BANG]
+|Tên ngành|Tổ hợp môn|Điểm chuẩn|Ghi chú|
+|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
+| Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến |
+| Công nghệ thông tin | A00; A01; X06; X26; D01 | 28.19 |  |  |  |
+| Công nghệ nông nghiệp | A00; A01; X06; X26; D01; B00 | 22 |  |  |  |
+| Kỹ thuật điều khiển và tự động hóa | A00; A01; X06; X26; D01 | 27.9 |  |  |  |
+| Trí tuệ nhân tạo | A00; A01; X06; X26; D01 | 27.75 |  |  |  |
+| Kỹ thuật năng lượng | A00; A01; X06; X26; D01 | 24.87 |  |  |  |
+| Hệ thống thông tin | A00; A01; X06; X26; D01 | 26.38 |  |  |  |
+| Mạng máy tính và truyền thông dữ liệu | A00; A01; X06; X26; D01 | 26.73 |  |  |  |
+| Kỹ thuật Robot | A00; A01; X06; X26; D01 | 26 |  |  |  |
+| Thiết kế công nghiệp và Đồ họa | A00; A01; X06; X26; D01 | 24.2 |  |  |  |
+| Công nghệ vật liệu | A00; A01; X06; X26; D01 | 25.6 |  |  |  |
+| Kỹ thuật máy tính | A00; A01; X06; X26; D01 | 27 |  |  |  |
+| Khoa học dữ liệu | A00; A01; X06; X26; D01 | 27.38 |  |  |  |
+| Công nghệ sinh học | A00; A01; X06; X26; D01; B00 | 22.13 |  |  |  |
+| Vật lý kỹ thuật | A00; A01; X06; X26; D01 | 25.2 |  |  |  |
+| Cơ kỹ thuật | A00; A01; X06; X26; D01 | 26.15 |  |  |  |
+| Công nghệ kỹ thuật xây dựng | A00; A01; X06; X26; D01 | 22.25 |  |  |  |
+| Công nghệ kỹ thuật cơ điện tử | A00; A01; X06; X26; D01 | 26.73 |  |  |  |
+| Công nghệ hàng không vũ trụ | A00; A01; X06; X26; D01 | 23.96 |  |  |  |
+| Khoa học máy tính | A00; A01; X06; X26; D01 | 27.86 |  |  |  |
+| Công nghệ kỹ thuật điện tử - Viễn thông | A00; A01; X06; X26; D01 | 26.63 |  |  |  |
+Lưu ý: Đề án tuyển sinh năm 2026 của Trường Đại Học Công Nghệ – Đại Học Quốc Gia Hà Nội sẽ được cập nhật chi tiết Tại Đây
+Xem thêm điểm chuẩn theo phương thức Điểm thi THPT năm 2024
+### Điểm chuẩn theo phương thức Điểm ĐGNL HN năm 2025
+
+[BANG]
+|Tên ngành|Tổ hợp môn|Điểm chuẩn|Ghi chú|
+|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
+| Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến |
+| Công nghệ thông tin |  | 108 |  |  |  |
+| Công nghệ nông nghiệp |  | 75 |  |  |  |
+| Kỹ thuật điều khiển và tự động hóa |  | 106 |  |  |  |
+| Trí tuệ nhân tạo |  | 104 |  |  |  |
+| Kỹ thuật năng lượng |  | 86 |  |  |  |
+| Hệ thống thông tin |  | 95 |  |  |  |
+| Mạng máy tính và truyền thông dữ liệu |  | 97 |  |  |  |
+| Kỹ thuật Robot |  | 92 |  |  |  |
+| Thiết kế công nghiệp và Đồ họa |  | 84 |  |  |  |
+| Công nghệ vật liệu |  | 90 |  |  |  |
+| Kỹ thuật máy tính |  | 98 |  |  |  |
+| Khoa học dữ liệu |  | 101 |  |  |  |
+| Công nghệ sinh học |  | 76 |  |  |  |
+| Vật lý kỹ thuật |  | 89 |  |  |  |
+| Cơ kỹ thuật |  | 94 |  |  |  |
+| Công nghệ kỹ thuật xây dựng |  | 76 |  |  |  |
+| Công nghệ kỹ thuật cơ điện tử |  | 97 |  |  |  |
+| Công nghệ hàng không vũ trụ |  | 83 |  |  |  |
+| Khoa học máy tính |  | 105 |  |  |  |
+| Công nghệ kỹ thuật điện tử - Viễn thông |  | 96 |  |  |  |
+Lưu ý: Đề án tuyển sinh năm 2026 của Trường Đại Học Công Nghệ – Đại Học Quốc Gia Hà Nội sẽ được cập nhật chi tiết Tại Đây
+Xem thêm điểm chuẩn theo phương thức Điểm ĐGNL HN năm 2024
+### Điểm chuẩn theo phương thức Chứng chỉ quốc tế năm 2025
+
+[BANG]
+|Tên ngành|Tổ hợp môn|Điểm chuẩn|Ghi chú|
+|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
+| Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến |
+| Công nghệ thông tin |  | 28.19 |  |  |  |
+| Công nghệ nông nghiệp |  | 22 |  |  |  |
+| Kỹ thuật điều khiển và tự động hóa |  | 27.9 |  |  |  |
+| Trí tuệ nhân tạo |  | 27.75 |  |  |  |
+| Kỹ thuật năng lượng |  | 24.87 |  |  |  |
+| Hệ thống thông tin |  | 26.38 |  |  |  |
+| Mạng máy tính và truyền thông dữ liệu |  | 26.73 |  |  |  |
+| Kỹ thuật Robot |  | 26 |  |  |  |
+| Thiết kế công nghiệp và Đồ họa |  | 24.2 |  |  |  |
+| Công nghệ vật liệu |  | 25.6 |  |  |  |
+| Kỹ thuật máy tính |  | 27 |  |  |  |
+| Khoa học dữ liệu |  | 27.38 |  |  |  |
+| Công nghệ sinh học |  | 22.13 |  |  |  |
+| Vật lý kỹ thuật |  | 25.2 |  |  |  |
+| Cơ kỹ thuật |  | 26.15 |  |  |  |
+| Công nghệ kỹ thuật xây dựng |  | 22.25 |  |  |  |
+| Công nghệ kỹ thuật cơ điện tử |  | 26.73 |  |  |  |
+| Công nghệ hàng không vũ trụ |  | 23.96 |  |  |  |
+| Khoa học máy tính |  | 27.86 |  |  |  |
+| Công nghệ kỹ thuật điện tử - Viễn thông |  | 26.63 |  |  |  |
+Lưu ý: Đề án tuyển sinh năm 2026 của Trường Đại Học Công Nghệ – Đại Học Quốc Gia Hà Nội sẽ được cập nhật chi tiết Tại Đây
+Xem thêm điểm chuẩn theo phương thức Chứng chỉ quốc tế năm 2024
+cancel
+arrow_right_alt
+Điểm thi THPT
+arrow_right_alt
+Điểm ĐGNL HN
+arrow_right_alt
+Chứng chỉ quốc tế
+### Tính năng hữu ích
+- Tra cứu đề án tuyển sinh
+- Tra cứu điểm chuẩn các trường
+- Tra cứu tổ hợp môn
+- Tra cứu xếp hạng thi
+
+================================================================================
+[SQ1_RAG_CHUNKS] count=1 text_limit=0 (0=full)
+================================================================================
+--------------------------------------------------------------------------------
+{
+  "index": 1,
+  "title": "Đại Học Quốc Gia Hà Nội 2025 chính xác",
+  "url": "https://diemthi.tuyensinh247.com/diem-chuan/dai-hoc-cong-nghe-dai-hoc-quoc-gia-ha-noi-QHI.html",
+  "query": "điểm chuẩn trường đại học công nghệ đại học quốc gia hà nội 2025",
+  "score": null,
+  "chunk_index": 3,
+  "text_chars": 960
+}
+[SOURCE_TEXT]
+[BANG]
+|Tên ngành|Tổ hợp môn|Điểm chuẩn|Ghi chú|
+|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
+| Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến |
+| Công nghệ thông tin | A00; A01; X06; X26; D01 | 28.19 |  |  |  |
+| Công nghệ nông nghiệp | A00; A01; X06; X26; D01; B00 | 22 |  |  |  |
+| Kỹ thuật điều khiển và tự động hóa | A00; A01; X06; X26; D01 | 27.9 |  |  |  |
+| Trí tuệ nhân tạo | A00; A01; X06; X26; D01 | 27.75 |  |  |  |
+| Kỹ thuật năng lượng | A00; A01; X06; X26; D01 | 24.87 |  |  |  |
+| Hệ thống thông tin | A00; A01; X06; X26; D01 | 26.38 |  |  |  |
+| Mạng máy tính và truyền thông dữ liệu | A00; A01; X06; X26; D01 | 26.73 |  |  |  |
+| Kỹ thuật Robot | A00; A01; X06; X26; D01 | 26 |  |  |  |
+[MultiHop] [Hop 2] running 1 sub-q in parallel
+  ▶ SQ#5 START [reasoning/comparison] deps=#1,#2,#3,#4
+      Q-raw: so sánh điểm chuẩn và học phí ngành Khoa học máy tính giữa UET và PTIT
+[MultiHop]   SQ#5 rewritten: so sánh điểm chuẩn và học phí ngành Khoa học máy tính giữa UET và PTIT (biết rằng: 28.19; Học phí ngành Khoa học máy tính UET năm 2025 chưa được nêu rõ)
+[MultiHop]   SQ#5 reasoning-evidence: deps=[1, 2, 3, 4] blocks=4 chars=1476 dep_facts=2
+
+================================================================================
+[REASONER_INPUT]
+================================================================================
+{
+  "original_question": "So sánh điểm chuẩn ngành Khoa học máy tính khối A00 và học phí của ngành này giữa UET và PTIT 2025",
+  "sub_question": "so sánh điểm chuẩn và học phí ngành Khoa học máy tính giữa UET và PTIT",
+  "evidence_blocks": 4,
+  "evidence_chars": 1482
+}
+
+================================================================================
+[REASONER_EVIDENCE]
+================================================================================
+### Bằng chứng từ sub-question #1
+- Tóm tắt fact: 28.19
+- Chunk 1 [Đại Học Quốc Gia Hà Nội 2025 chính xác]: [BANG]
+|Tên ngành|Tổ hợp môn|Điểm chuẩn|Ghi chú|
+|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
+| Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến |
+| Công nghệ thông tin | A00; A01; X06; X26; D01 | 28.19 |  |  |  |
+| Công nghệ nông nghiệp | A00; A01; X06; X26; D01; B00 | 22 |  |  |  |
+| Kỹ thuật điều khiển và tự động hóa | A00; A01; X06; X26; D01 | 27.9 |  |  |  |
+| Trí tuệ nhân tạo | A00; A01; X06; X26; D01 | 27.75 |  |  |  |
+| Kỹ thuật năng lượng | A00; A01; X06; X26; D01 | 24.87 |  |  |  |
+| Hệ thống thông tin | A00; A01; X06; X26; D01 | 26.38 |  |  |  |
+| Mạng máy tính và truyền thông dữ liệu | A00; A01; X06; X26; D01 | 26.73 |  |  |  |
+| Kỹ thuật Robot | A00; A01; X06; X26; D01 | 26 |  |  |  |
+
+### Bằng chứng từ sub-question #2
+
+### Bằng chứng từ sub-question #3
+- Tóm tắt fact: Học phí ngành Khoa học máy tính UET năm 2025 chưa được nêu rõ.
+- Chunk 1 [THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo]: [THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo](https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf)
+
+### Bằng chứng từ sub-question #4
+[VLLM] reasoner | Instruction length: 513 | Prompt length: 2874 | kwargs: None
+
+================================================================================
+[LLM_CALL reasoner]
+================================================================================
+{
+  "call_type": "reasoner",
+  "model_id": "Qwen/Qwen3-4B$$$1",
+  "max_tokens": "[REDACTED]",
+  "temperature": 0.1,
+  "top_p": 0.9,
+  "top_k": 40,
+  "params": {
+    "model_id": "Qwen/Qwen3-4B$$$1",
+    "use_websearch": true,
+    "use_localdb": true,
+    "auto_source": true,
+    "max_query": 3,
+    "query_score_threshold": 0.5,
+    "engine_type": "google",
+    "domain_restrict": false,
+    "school_domain": false,
+    "llm_rerank": false,
+    "page_score_threshold": 0.5,
+    "chunk_score_threshold": 0.5,
+    "k_docs": 5,
+    "k_pages": 3,
+    "page_rerank": false,
+    "chunk_rerank": true,
+    "include_pdf": true,
+    "include_image": true,
+    "merge_table": false,
+    "merge_neighbor": false,
+    "enable_quality_gate": true,
+    "quality_log": true,
+    "max_tokens": "[REDACTED]",
+    "temperature": 0.1,
+    "top_p": 0.9,
+    "top_k": 40,
+    "max_history": 8,
+    "quality_min_score": 0.58,
+    "quality_min_relevance": 0.25,
+    "quality_min_trust": 0.5,
+    "quality_strict_mode": true,
+    "quality_max_docs": 3,
+    "source_safety_filter": true,
+    "quality_force_for_rich_media": true,
+    "hybrid_retrieval": true,
+    "auto_multi_hop": true,
+    "multi_hop_complexity_threshold": 2,
+    "reader_table_rescue_max_sources": 2,
+    "reader_table_rescue_max_chars": 6000
+  },
+  "instruction_chars": 513,
+  "prompt_chars": 2874
+}
+
+================================================================================
+[LLM_SYSTEM_PROMPT reasoner]
+================================================================================
+Bạn là chuyên gia suy luận / so sánh / lọc dữ liệu cho hệ thống tư vấn tuyển sinh. Nhiệm vụ: thực hiện ĐÚNG phép tính/so sánh/lọc được yêu cầu trên các bằng chứng đã thu thập. TUYỆT ĐỐI tuân thủ: (1) không bịa entry, (2) chỉ dùng số liệu có trong bằng chứng, (3) khi câu hỏi gốc yêu cầu lọc theo ngành/category cụ thể, BỎ QUA mọi entry không thuộc ngành/category đó. Neu output khong phai JSON hop le, cau tra loi se bi loai bo. Khong lap lai mot gia tri nhieu lan. Khong dung gia tri diem chuan thay cho hoc phi.
+
+================================================================================
+[LLM_USER_PROMPT reasoner]
+================================================================================
+# CÂU HỎI GỐC CỦA NGƯỜI DÙNG
+So sánh điểm chuẩn ngành Khoa học máy tính khối A00 và học phí của ngành này giữa UET và PTIT 2025
+
+# YÊU CẦU CỦA BƯỚC SUY LUẬN HIỆN TẠI
+so sánh điểm chuẩn và học phí ngành Khoa học máy tính giữa UET và PTIT
+
+# BẰNG CHỨNG TỪ CÁC SUB-QUESTION PHỤ THUỘC
+### Bằng chứng từ sub-question #1
+- Tóm tắt fact: 28.19
+- Chunk 1 [Đại Học Quốc Gia Hà Nội 2025 chính xác]: [BANG]
+|Tên ngành|Tổ hợp môn|Điểm chuẩn|Ghi chú|
+|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
+| Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến |
+| Công nghệ thông tin | A00; A01; X06; X26; D01 | 28.19 |  |  |  |
+| Công nghệ nông nghiệp | A00; A01; X06; X26; D01; B00 | 22 |  |  |  |
+| Kỹ thuật điều khiển và tự động hóa | A00; A01; X06; X26; D01 | 27.9 |  |  |  |
+| Trí tuệ nhân tạo | A00; A01; X06; X26; D01 | 27.75 |  |  |  |
+| Kỹ thuật năng lượng | A00; A01; X06; X26; D01 | 24.87 |  |  |  |
+| Hệ thống thông tin | A00; A01; X06; X26; D01 | 26.38 |  |  |  |
+| Mạng máy tính và truyền thông dữ liệu | A00; A01; X06; X26; D01 | 26.73 |  |  |  |
+| Kỹ thuật Robot | A00; A01; X06; X26; D01 | 26 |  |  |  |
+
+### Bằng chứng từ sub-question #2
+
+### Bằng chứng từ sub-question #3
+- Tóm tắt fact: Học phí ngành Khoa học máy tính UET năm 2025 chưa được nêu rõ.
+- Chunk 1 [THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo]: [THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo](https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf)
+
+### Bằng chứng từ sub-question #4
+
+# QUY TẮC
+1. Đọc kỹ "Câu hỏi gốc" để hiểu category/điều kiện thực sự (ví dụ: chỉ ngành CNTT, chỉ học phí < 50 triệu).
+2. Áp dụng phép tính/lọc được yêu cầu trong "Yêu cầu của bước suy luận" lên bằng chứng.
+3. Nếu bằng chứng có entry thuộc ngành/category KHÁC với câu hỏi gốc → loại bỏ.
+4. Nếu bằng chứng KHÔNG đủ → trả answer rỗng và confidence thấp.
+5. Trình bày kết quả theo dạng có thể đọc được (list/bảng đơn giản).
+
+Trả về JSON:
+```json
+{"answer": "<kết quả chi tiết, có thể là list nhiều dòng phân cách bằng ' ; '>", "items": [{"name": "...", "value": "..."}, ...], "confidence": <float 0.0-1.0>, "explanation": "<1-2 câu giải thích cách lọc/tính>"}
+```
+Chỉ JSON, không giải thích thêm bên ngoài.
+
+# KIEM TRA BAT BUOC TRUOC KHI TRA JSON
+- Moi item trong answer phai co du bang chung tu evidence. Neu thieu hoc phi/diem cua mot truong, ghi ro `unknown`, khong suy doan.
+- Voi sort/ranking: sap xep bang so thuc giam/tang dung yeu cau, khong tron thang diem khac nhau neu khong ghi ro.
+- Voi filter: chi giu item thoa TAT CA dieu kien.
+- Output phai la JSON object hop le, khong boc trong markdown fence.
+
+INFO 05-24 14:43:57 [async_llm_engine.py:209] Added request 21bd497e39b24a5684c01f460645e84d.
+INFO 05-24 14:43:59 [metrics.py:386] Avg prompt throughput: 404.3 tokens/s, Avg generation throughput: 28.5 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 3.3%, CPU KV cache usage: 0.0%.
+INFO 05-24 14:44:03 [async_llm_engine.py:177] Finished request 21bd497e39b24a5684c01f460645e84d.
+
+================================================================================
+[REASONER_RAW_OUTPUT]
+================================================================================
+```json
+{"answer": "Điểm chuẩn ngành Khoa học máy tính khối A00 tại UET là 28.19; Học phí ngành Khoa học máy tính tại UET năm 2025 chưa được nêu rõ; Học phí ngành Khoa học máy tính tại PTIT năm 2025 chưa được nêu rõ", "items": [{"name": "Điểm chuẩn ngành Khoa học máy tính khối A00 tại UET", "value": "28.19"}, {"name": "Học phí ngành Khoa học máy tính tại UET năm 2025", "value": "unknown"}, {"name": "Học phí ngành Khoa học máy tính tại PTIT năm 2025", "value": "unknown"}], "confidence": 0.7, "explanation": "Điểm chuẩn ngành Khoa học máy tính khối A00 tại UET được nêu rõ trong bằng chứng. Học phí ngành Khoa học máy tính tại cả UET và PTIT đều chưa được nêu rõ trong bằng chứng."}
+```
+
+================================================================================
+[REASONER_PARSED]
+================================================================================
+{
+  "answer": "Điểm chuẩn ngành Khoa học máy tính khối A00 tại UET là 28.19; Học phí ngành Khoa học máy tính tại UET năm 2025 chưa được nêu rõ; Học phí ngành Khoa học máy tính tại PTIT năm 2025 chưa được nêu rõ",
+  "confidence": 0.7
+}
+[MultiHop]   SQ#5 reasoner OK conf=0.70 answer_preview=Điểm chuẩn ngành Khoa học máy tính khối A00 tại UET là 28.19; Học phí ngành Khoa học máy tính tại UET năm 2025 chưa được
+      Q-rewritten: so sánh điểm chuẩn và học phí ngành Khoa học máy tính giữa UET và PTIT (biết rằng: 28.19; Học phí ngành Khoa học máy tính UET năm 2025 chưa được nêu rõ)
+  ✓ SQ#5 DONE  web=0 rag=1 conf=0.70
+      Fact[5]: Điểm chuẩn ngành Khoa học máy tính khối A00 tại UET là 28.19; Học phí ngành Khoa học máy tính tại UET năm 2025 chưa được nêu rõ; Học phí ngành Khoa học máy tính tại PTIT năm 2025 chưa được nêu rõ
+
+================================================================================
+[SQ5_WEB_SOURCES] count=0 text_limit=0 (0=full)
+================================================================================
+(empty)
+
+================================================================================
+[SQ5_RAG_CHUNKS] count=1 text_limit=0 (0=full)
+================================================================================
+--------------------------------------------------------------------------------
+{
+  "index": 1,
+  "title": "Bước suy luận #5",
+  "url": "multihop://reasoning/sq_5",
+  "query": "so sánh điểm chuẩn và học phí ngành Khoa học máy tính giữa UET và PTIT",
+  "score": null,
+  "chunk_index": 0,
+  "text_chars": 432
+}
+[SOURCE_TEXT]
+[Kết quả bước suy luận: so sánh điểm chuẩn và học phí ngành Khoa học máy tính giữa UET và PTIT]
+Đáp án: Điểm chuẩn ngành Khoa học máy tính khối A00 tại UET là 28.19; Học phí ngành Khoa học máy tính tại UET năm 2025 chưa được nêu rõ; Học phí ngành Khoa học máy tính tại PTIT năm 2025 chưa được nêu rõ
+Bằng chứng đầu vào:
+- Từ sub-question #1: 28.19
+- Từ sub-question #3: Học phí ngành Khoa học máy tính UET năm 2025 chưa được nêu rõ.
+[MultiHop] [Aggregate] web=3 rag=3 hops=2
+────────────────────────────────────────────────────────────────────────────────
+[DECOMPOSE result] 5 sub-question(s), sẽ chạy trong 2 hop(s)
+DAG plan:
+  • SQ#1 [local_db/numeric] deps=(root)
+      điểm chuẩn ngành Khoa học máy tính khối A00 UET năm 2025
+  • SQ#2 [local_db/numeric] deps=(root)
+      điểm chuẩn ngành Khoa học máy tính khối A00 PTIT năm 2025
+  • SQ#3 [local_db/numeric] deps=(root)
+      học phí ngành Khoa học máy tính UET năm 2025
+  • SQ#4 [local_db/numeric] deps=(root)
+      học phí ngành Khoa học máy tính PTIT năm 2025
+  • SQ#5 [reasoning/comparison] deps=#1→#2→#3→#4
+      so sánh điểm chuẩn và học phí ngành Khoa học máy tính giữa UET và PTIT
+────────────────────────────────────────────────────────────────────────────────
+[Step 2/4] EXECUTE → chạy hops theo topological order (sub-q ready song song)
+            (chi tiết từng SQ được in real-time trong _execute_subq_logged)
+────────────────────────────────────────────────────────────────────────────────
+[Step 3/4] AGGREGATE → dedup theo (url, chunk_index): web=3 chunks, rag=3 chunks
+  ⤷ SQ#1: contributed web=2 rag=1 fact=yes
+  ⤷ SQ#2: contributed web=0 rag=0 fact=no
+  ⤷ SQ#3: contributed web=2 rag=1 fact=yes
+  ⤷ SQ#4: contributed web=0 rag=0 fact=no
+  ⤷ SQ#5: contributed web=0 rag=1 fact=yes
+────────────────────────────────────────────────────────────────────────────────
+[Step 4/4] FORWARD → SufficiencyGate kiểm tra → Reader Qwen3-4B sinh câu trả lời
+════════════════════════════════════════════════════════════════════════════════ [MULTI-HOP] DONE
+
+[MULTI-HOP DONE] sub_q=5 | hops=2 | rag=3 | web=3
+
+================================================================================
+[MULTI_HOP_TRACE]
+================================================================================
+{
+  "hop_count": 2,
+  "sub_questions": [
+    {
+      "id": 1,
+      "text": "điểm chuẩn ngành Khoa học máy tính khối A00 UET năm 2025",
+      "depends_on": [],
+      "resolver": "local_db",
+      "evidence_type": "numeric",
+      "rewritten_text": "điểm chuẩn ngành Khoa học máy tính khối A00 UET năm 2025",
+      "fact": "28.19",
+      "confidence": 1.0,
+      "web_count": 2,
+      "rag_count": 1
+    },
+    {
+      "id": 2,
+      "text": "điểm chuẩn ngành Khoa học máy tính khối A00 PTIT năm 2025",
+      "depends_on": [],
+      "resolver": "local_db",
+      "evidence_type": "numeric",
+      "rewritten_text": "điểm chuẩn ngành Khoa học máy tính khối A00 PTIT năm 2025",
+      "fact": "",
+      "confidence": 0.0,
+      "web_count": 0,
+      "rag_count": 0
+    },
+    {
+      "id": 3,
+      "text": "học phí ngành Khoa học máy tính UET năm 2025",
+      "depends_on": [],
+      "resolver": "local_db",
+      "evidence_type": "numeric",
+      "rewritten_text": "học phí ngành Khoa học máy tính UET năm 2025",
+      "fact": "Học phí ngành Khoa học máy tính UET năm 2025 chưa được nêu rõ.",
+      "confidence": 0.8,
+      "web_count": 2,
+      "rag_count": 1
+    },
+    {
+      "id": 4,
+      "text": "học phí ngành Khoa học máy tính PTIT năm 2025",
+      "depends_on": [],
+      "resolver": "local_db",
+      "evidence_type": "numeric",
+      "rewritten_text": "học phí ngành Khoa học máy tính PTIT năm 2025",
+      "fact": "",
+      "confidence": 0.0,
+      "web_count": 0,
+      "rag_count": 0
+    },
+    {
+      "id": 5,
+      "text": "so sánh điểm chuẩn và học phí ngành Khoa học máy tính giữa UET và PTIT",
+      "depends_on": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "resolver": "reasoning",
+      "evidence_type": "comparison",
+      "rewritten_text": "so sánh điểm chuẩn và học phí ngành Khoa học máy tính giữa UET và PTIT (biết rằng: 28.19; Học phí ngành Khoa học máy tính UET năm 2025 chưa được nêu rõ)",
+      "fact": "Điểm chuẩn ngành Khoa học máy tính khối A00 tại UET là 28.19; Học phí ngành Khoa học máy tính tại UET năm 2025 chưa được nêu rõ; Học phí ngành Khoa học máy tính tại PTIT năm 2025 chưa được nêu rõ",
+      "confidence": 0.7,
+      "web_count": 0,
+      "rag_count": 1
+    }
+  ]
+}
+
+================================================================================
+[FINAL_WEB_SOURCES] count=3 text_limit=0 (0=full)
+================================================================================
+--------------------------------------------------------------------------------
+{
+  "index": 1,
+  "title": "THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo",
+  "url": "https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf",
+  "query": "điểm chuẩn ngành khoa học máy tính khối a00 uet 2025",
+  "score": 1,
+  "chunk_index": null,
+  "text_chars": 156
+}
+[SOURCE_TEXT]
+[THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo](https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf)
+--------------------------------------------------------------------------------
+{
+  "index": 2,
+  "title": "Đại Học Quốc Gia Hà Nội 2025 chính xác",
+  "url": "https://diemthi.tuyensinh247.com/diem-chuan/dai-hoc-cong-nghe-dai-hoc-quoc-gia-ha-noi-QHI.html",
+  "query": "điểm chuẩn trường đại học công nghệ đại học quốc gia hà nội 2025",
+  "score": 1,
+  "chunk_index": null,
+  "text_chars": 6035
+}
+[SOURCE_TEXT]
+Tìm kiếm trường
+Nhập tên trường/mã trường _
+# Điểm chuẩn Trường Đại Học Công Nghệ – Đại Học Quốc Gia Hà Nội 2025 chính xác
+Điểm chuẩn trường UET - Đại Học Công nghệ - ĐHQG Hà Nội năm 2025
+Điểm chuẩn UET - Đại học Công nghệ - ĐHQGHN năm 2025 đã được công bố đến tất cả thí sinh ngày 22/08.
+Điểm trúng tuyển (điểm chuẩn) của một ngành là như nhau giữa các tổ hợp xét tuyển, được xác định trên cơ sở điểm xét tuyển (theo thang điểm 30) và làm tròn đến hai chữ số thập phân.
+Chú ý: Điểm chuẩn dưới đây là tổng điểm các môn xét tuyển + điểm ưu tiên nếu có Click vào phương thức để xem nhanh điểm chuẩn của phương thức đó
+- ✯ Điểm thi THPT
+- ✯ Điểm ĐGNL HN
+- ✯ Chứng chỉ quốc tế
+### Điểm chuẩn theo phương thức Điểm thi THPT năm 2025
+
+[BANG]
+|Tên ngành|Tổ hợp môn|Điểm chuẩn|Ghi chú|
+|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
+| Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến |
+| Công nghệ thông tin | A00; A01; X06; X26; D01 | 28.19 |  |  |  |
+| Công nghệ nông nghiệp | A00; A01; X06; X26; D01; B00 | 22 |  |  |  |
+| Kỹ thuật điều khiển và tự động hóa | A00; A01; X06; X26; D01 | 27.9 |  |  |  |
+| Trí tuệ nhân tạo | A00; A01; X06; X26; D01 | 27.75 |  |  |  |
+| Kỹ thuật năng lượng | A00; A01; X06; X26; D01 | 24.87 |  |  |  |
+| Hệ thống thông tin | A00; A01; X06; X26; D01 | 26.38 |  |  |  |
+| Mạng máy tính và truyền thông dữ liệu | A00; A01; X06; X26; D01 | 26.73 |  |  |  |
+| Kỹ thuật Robot | A00; A01; X06; X26; D01 | 26 |  |  |  |
+| Thiết kế công nghiệp và Đồ họa | A00; A01; X06; X26; D01 | 24.2 |  |  |  |
+| Công nghệ vật liệu | A00; A01; X06; X26; D01 | 25.6 |  |  |  |
+| Kỹ thuật máy tính | A00; A01; X06; X26; D01 | 27 |  |  |  |
+| Khoa học dữ liệu | A00; A01; X06; X26; D01 | 27.38 |  |  |  |
+| Công nghệ sinh học | A00; A01; X06; X26; D01; B00 | 22.13 |  |  |  |
+| Vật lý kỹ thuật | A00; A01; X06; X26; D01 | 25.2 |  |  |  |
+| Cơ kỹ thuật | A00; A01; X06; X26; D01 | 26.15 |  |  |  |
+| Công nghệ kỹ thuật xây dựng | A00; A01; X06; X26; D01 | 22.25 |  |  |  |
+| Công nghệ kỹ thuật cơ điện tử | A00; A01; X06; X26; D01 | 26.73 |  |  |  |
+| Công nghệ hàng không vũ trụ | A00; A01; X06; X26; D01 | 23.96 |  |  |  |
+| Khoa học máy tính | A00; A01; X06; X26; D01 | 27.86 |  |  |  |
+| Công nghệ kỹ thuật điện tử - Viễn thông | A00; A01; X06; X26; D01 | 26.63 |  |  |  |
+Lưu ý: Đề án tuyển sinh năm 2026 của Trường Đại Học Công Nghệ – Đại Học Quốc Gia Hà Nội sẽ được cập nhật chi tiết Tại Đây
+Xem thêm điểm chuẩn theo phương thức Điểm thi THPT năm 2024
+### Điểm chuẩn theo phương thức Điểm ĐGNL HN năm 2025
+
+[BANG]
+|Tên ngành|Tổ hợp môn|Điểm chuẩn|Ghi chú|
+|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
+| Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến |
+| Công nghệ thông tin |  | 108 |  |  |  |
+| Công nghệ nông nghiệp |  | 75 |  |  |  |
+| Kỹ thuật điều khiển và tự động hóa |  | 106 |  |  |  |
+| Trí tuệ nhân tạo |  | 104 |  |  |  |
+| Kỹ thuật năng lượng |  | 86 |  |  |  |
+| Hệ thống thông tin |  | 95 |  |  |  |
+| Mạng máy tính và truyền thông dữ liệu |  | 97 |  |  |  |
+| Kỹ thuật Robot |  | 92 |  |  |  |
+| Thiết kế công nghiệp và Đồ họa |  | 84 |  |  |  |
+| Công nghệ vật liệu |  | 90 |  |  |  |
+| Kỹ thuật máy tính |  | 98 |  |  |  |
+| Khoa học dữ liệu |  | 101 |  |  |  |
+| Công nghệ sinh học |  | 76 |  |  |  |
+| Vật lý kỹ thuật |  | 89 |  |  |  |
+| Cơ kỹ thuật |  | 94 |  |  |  |
+| Công nghệ kỹ thuật xây dựng |  | 76 |  |  |  |
+| Công nghệ kỹ thuật cơ điện tử |  | 97 |  |  |  |
+| Công nghệ hàng không vũ trụ |  | 83 |  |  |  |
+| Khoa học máy tính |  | 105 |  |  |  |
+| Công nghệ kỹ thuật điện tử - Viễn thông |  | 96 |  |  |  |
+Lưu ý: Đề án tuyển sinh năm 2026 của Trường Đại Học Công Nghệ – Đại Học Quốc Gia Hà Nội sẽ được cập nhật chi tiết Tại Đây
+Xem thêm điểm chuẩn theo phương thức Điểm ĐGNL HN năm 2024
+### Điểm chuẩn theo phương thức Chứng chỉ quốc tế năm 2025
+
+[BANG]
+|Tên ngành|Tổ hợp môn|Điểm chuẩn|Ghi chú|
+|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
+| Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến |
+| Công nghệ thông tin |  | 28.19 |  |  |  |
+| Công nghệ nông nghiệp |  | 22 |  |  |  |
+| Kỹ thuật điều khiển và tự động hóa |  | 27.9 |  |  |  |
+| Trí tuệ nhân tạo |  | 27.75 |  |  |  |
+| Kỹ thuật năng lượng |  | 24.87 |  |  |  |
+| Hệ thống thông tin |  | 26.38 |  |  |  |
+| Mạng máy tính và truyền thông dữ liệu |  | 26.73 |  |  |  |
+| Kỹ thuật Robot |  | 26 |  |  |  |
+| Thiết kế công nghiệp và Đồ họa |  | 24.2 |  |  |  |
+| Công nghệ vật liệu |  | 25.6 |  |  |  |
+| Kỹ thuật máy tính |  | 27 |  |  |  |
+| Khoa học dữ liệu |  | 27.38 |  |  |  |
+| Công nghệ sinh học |  | 22.13 |  |  |  |
+| Vật lý kỹ thuật |  | 25.2 |  |  |  |
+| Cơ kỹ thuật |  | 26.15 |  |  |  |
+| Công nghệ kỹ thuật xây dựng |  | 22.25 |  |  |  |
+| Công nghệ kỹ thuật cơ điện tử |  | 26.73 |  |  |  |
+| Công nghệ hàng không vũ trụ |  | 23.96 |  |  |  |
+| Khoa học máy tính |  | 27.86 |  |  |  |
+| Công nghệ kỹ thuật điện tử - Viễn thông |  | 26.63 |  |  |  |
+Lưu ý: Đề án tuyển sinh năm 2026 của Trường Đại Học Công Nghệ – Đại Học Quốc Gia Hà Nội sẽ được cập nhật chi tiết Tại Đây
+Xem thêm điểm chuẩn theo phương thức Chứng chỉ quốc tế năm 2024
+cancel
+arrow_right_alt
+Điểm thi THPT
+arrow_right_alt
+Điểm ĐGNL HN
+arrow_right_alt
+Chứng chỉ quốc tế
+### Tính năng hữu ích
+- Tra cứu đề án tuyển sinh
+- Tra cứu điểm chuẩn các trường
+- Tra cứu tổ hợp môn
+- Tra cứu xếp hạng thi
+--------------------------------------------------------------------------------
+{
+  "index": 3,
+  "title": "Học phí trường Đại học Công nghệ cao nhất 40 triệu đồng",
+  "url": "https://vnexpress.net/hoc-phi-dai-hoc-cong-nghe-nam-2025-2026-4894143.html",
+  "query": "học phí trường đại học công nghệ - đhqgHN năm học 2025-2026",
+  "score": 1,
+  "chunk_index": null,
+  "text_chars": 1453
+}
+[SOURCE_TEXT]
+Trường Đại học Công nghệ, Đại học Quốc gia Hà Nội (VNU-UET) ngày 3/6 thông báo tuyển 4.020 sinh viên cho 20 ngành và chương trình.
+Trường chia học phí theo hai mức là 34 và 40 triệu đồng cho năm học 2025-2026. Đa số ngành giữ nguyên so với năm ngoái. Hai ngành tăng 2 triệu đồng, lên mức 34 triệu, là Trí tuệ nhân tạo, Thiết kế công nghiệp và đồ họa. Hai ngành tăng 8 triệu đồng, lên mức 40 triệu, là Công nghệ nông nghiệp và Kỹ thuật điều khiển và tự động hóa.
+Học phí các ngành của trường Đại học Công nghệ cụ thể như sau:
+4 phương thức xét tuyển của trường Đại học Công nghệ gồm: xét tuyển thẳng, dựa vào kết quả thi tốt nghiệp, thi đánh giá năng lực của Đại học Quốc gia Hà Nội (HSA) và chứng chỉ SAT.
+Với xét điểm thi tốt nghiệp, trường dùng 5 tổ hợp: A00 (Toán, Lý, Hoá), A01 (Toán, Lý, Anh), X26 (Toán, Anh, Tin), X06 (Toán, Lý, Tin), D01 (Toán hệ số 2, Văn, Anh). Riêng ngành Công nghệ nông nghiệp và Công nghệ sinh học dùng thêm tổ hợp B00 (Toán, Hoá, Sinh). Trường cũng cho biết sẽ dừng tuyển khối D01 từ năm sau.
+Thí sinh có chứng chỉ IELTS 5.5 hoặc TOEFL iBT 72 điểm trở lên sẽ được quy đổi thành điểm môn tiếng Anh trong tổ hợp, với mức quy đổi từ 8,5/10.
+Chỉ tiêu, phương thức xét tuyển từng ngành:
+Năm ngoái, điểm chuẩn trường Đại học Công nghệ, Đại học Quốc gia Hà Nội, xét theo điểm thi tốt nghiệp THPT là 22,5-27,8, ngành Công nghệ thông tin cao nhất.
+Sinh viên trường Đại học Công nghệ, Đại học Quốc gia Hà Nội. Ảnh: VNU-UET
+Dương Tâm
+
+================================================================================
+[FINAL_RAG_CHUNKS] count=3 text_limit=0 (0=full)
+================================================================================
+--------------------------------------------------------------------------------
+{
+  "index": 1,
+  "title": "Đại Học Quốc Gia Hà Nội 2025 chính xác",
+  "url": "https://diemthi.tuyensinh247.com/diem-chuan/dai-hoc-cong-nghe-dai-hoc-quoc-gia-ha-noi-QHI.html",
+  "query": "điểm chuẩn trường đại học công nghệ đại học quốc gia hà nội 2025",
+  "score": null,
+  "chunk_index": 3,
+  "text_chars": 960
+}
+[SOURCE_TEXT]
+[BANG]
+|Tên ngành|Tổ hợp môn|Điểm chuẩn|Ghi chú|
+|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
+| Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến |
+| Công nghệ thông tin | A00; A01; X06; X26; D01 | 28.19 |  |  |  |
+| Công nghệ nông nghiệp | A00; A01; X06; X26; D01; B00 | 22 |  |  |  |
+| Kỹ thuật điều khiển và tự động hóa | A00; A01; X06; X26; D01 | 27.9 |  |  |  |
+| Trí tuệ nhân tạo | A00; A01; X06; X26; D01 | 27.75 |  |  |  |
+| Kỹ thuật năng lượng | A00; A01; X06; X26; D01 | 24.87 |  |  |  |
+| Hệ thống thông tin | A00; A01; X06; X26; D01 | 26.38 |  |  |  |
+| Mạng máy tính và truyền thông dữ liệu | A00; A01; X06; X26; D01 | 26.73 |  |  |  |
+| Kỹ thuật Robot | A00; A01; X06; X26; D01 | 26 |  |  |  |
+--------------------------------------------------------------------------------
+{
+  "index": 2,
+  "title": "THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo",
+  "url": "https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf",
+  "query": "học phí ngành khoa học máy tính uet 2025",
+  "score": null,
+  "chunk_index": 0,
+  "text_chars": 156
+}
+[SOURCE_TEXT]
+[THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo](https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf)
+--------------------------------------------------------------------------------
+{
+  "index": 3,
+  "title": "Bước suy luận #5",
+  "url": "multihop://reasoning/sq_5",
+  "query": "so sánh điểm chuẩn và học phí ngành Khoa học máy tính giữa UET và PTIT",
+  "score": null,
+  "chunk_index": 0,
+  "text_chars": 432
+}
+[SOURCE_TEXT]
+[Kết quả bước suy luận: so sánh điểm chuẩn và học phí ngành Khoa học máy tính giữa UET và PTIT]
+Đáp án: Điểm chuẩn ngành Khoa học máy tính khối A00 tại UET là 28.19; Học phí ngành Khoa học máy tính tại UET năm 2025 chưa được nêu rõ; Học phí ngành Khoa học máy tính tại PTIT năm 2025 chưa được nêu rõ
+Bằng chứng đầu vào:
+- Từ sub-question #1: 28.19
+- Từ sub-question #3: Học phí ngành Khoa học máy tính UET năm 2025 chưa được nêu rõ.
+[Sufficiency] sufficient=True score=0.189 reason=ok
+
+================================================================================
+[RAG CHUNKS] Total 3 chunks selected for reader:
+--------------------------------------------------------------------------------
+[Chunk 1] title=Đại Học Quốc Gia Hà Nội 2025 chính xác | url=https://diemthi.tuyensinh247.com/diem-chuan/dai-hoc-cong-nghe-dai-hoc-quoc-gia-ha-noi-QHI.html | chunk_index=3
+Text preview:
+[BANG]
+|Tên ngành|Tổ hợp môn|Điểm chuẩn|Ghi chú|
+|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
+| Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến |
+--------------------------------------------------------------------------------
+[Chunk 2] title=THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo | url=https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf | chunk_index=0
+Text preview:
+[THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo](https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf)
+--------------------------------------------------------------------------------
+[Chunk 3] title=Bước suy luận #5 | url=multihop://reasoning/sq_5 | chunk_index=0
+Text preview:
+[Kết quả bước suy luận: so sánh điểm chuẩn và học phí ngành Khoa học máy tính giữa UET và PTIT]
+Đáp án: Điểm chuẩn ngành Khoa học máy tính khối A00 tại UET là 28.19; Học phí ngành Khoa học máy tính tại UET năm 2025 chưa được nêu rõ; Học phí ngành Khoa học máy tính tại PTIT năm 2025 chưa được nêu rõ
+Bằng chứng đầu vào:
+- Từ sub-question #1: 28.19
+- Từ sub-question #3: Học phí ngành Khoa học máy tín
+================================================================================
+
+================================================================================
+[RAG CONTEXT] Formatted chunks sent to reader:
+--------------------------------------------------------------------------------
+[1] Đại Học Quốc Gia Hà Nội 2025 chính xác
+
+URL: https://diemthi.tuyensinh247.com/diem-chuan/dai-hoc-cong-nghe-dai-hoc-quoc-gia-ha-noi-QHI.html
+
+[BANG]
+|Tên ngành|Tổ hợp môn|Điểm chuẩn|Ghi chú|
+|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
+| Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến |
+| Công nghệ thông tin | A00; A01; X06; X26; D01 | 28.19 |  |  |  |
+| Công nghệ nông nghiệp | A00; A01; X06; X26; D01; B00 | 22 |  |  |  |
+| Kỹ thuật điều khiển và tự động hóa | A00; A01; X06; X26; D01 | 27.9 |  |  |  |
+| Trí tuệ nhân tạo | A00; A01; X06; X26; D01 | 27.75 |  |  |  |
+| Kỹ thuật năng lượng | A00; A01; X06; X26; D01 | 24.87 |  |  |  |
+| Hệ thống thông tin | A00; A01; X06; X26; D01 | 26.38 |  |  |  |
+| Mạng máy tính và truyền thông dữ liệu | A00; A01; X06; X26; D01 | 26.73 |  |  |  |
+| Kỹ thuật Robot | A00; A01; X06; X26; D01 | 26 |  |  |  |
+
+---
+
+[2] THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo
+
+URL: https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf
+
+[THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo](https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf)
+
+---
+
+[3] Bước suy luận #5
+
+URL: multihop://reasoning/sq_5
+
+[Kết quả bước suy luận: so sánh điểm chuẩn và học phí ngành Khoa học máy tính giữa UET và PTIT]
+Đáp án: Điểm chuẩn ngành Khoa học máy tính khối A00 tại UET là 28.19; Học phí ngành Khoa học máy tính tại UET năm 2025 chưa được nêu rõ; Học phí ngành Khoa học máy tính tại PTIT năm 2025 chưa được nêu rõ
+Bằng chứng đầu vào:
+- Từ sub-question #1: 28.19
+- Từ sub-question #3: Học phí ngành Khoa học máy tính UET năm 2025 chưa được nêu rõ.
+
+---
+================================================================================
+[FINAL PROMPT] Qwen4B input:
+--------------------------------------------------------------------------------
+Hiện tại là năm 2025, sử dụng thông tin mới nhất có thể. 
+Nếu không tìm thấy đủ dữ liệu đáng tin để xây dựng đầy đủ theo form, chỉ trả lời: "Tôi không tìm thấy thông tin phù hợp.".
+Thông tin tham khảo:
+[1] Đại Học Quốc Gia Hà Nội 2025 chính xác
+
+URL: https://diemthi.tuyensinh247.com/diem-chuan/dai-hoc-cong-nghe-dai-hoc-quoc-gia-ha-noi-QHI.html
+
+[BANG]
+|Tên ngành|Tổ hợp môn|Điểm chuẩn|Ghi chú|
+|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
+| Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến |
+| Công nghệ thông tin | A00; A01; X06; X26; D01 | 28.19 |  |  |  |
+| Công nghệ nông nghiệp | A00; A01; X06; X26; D01; B00 | 22 |  |  |  |
+| Kỹ thuật điều khiển và tự động hóa | A00; A01; X06; X26; D01 | 27.9 |  |  |  |
+| Trí tuệ nhân tạo | A00; A01; X06; X26; D01 | 27.75 |  |  |  |
+| Kỹ thuật năng lượng | A00; A01; X06; X26; D01 | 24.87 |  |  |  |
+| Hệ thống thông tin | A00; A01; X06; X26; D01 | 26.38 |  |  |  |
+| Mạng máy tính và truyền thông dữ liệu | A00; A01; X06; X26; D01 | 26.73 |  |  |  |
+| Kỹ thuật Robot | A00; A01; X06; X26; D01 | 26 |  |  |  |
+
+---
+
+[2] THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo
+
+URL: https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf
+
+[THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo](https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf)
+
+---
+
+[3] Bước suy luận #5
+
+URL: multihop://reasoning/sq_5
+
+[Kết quả bước suy luận: so sánh điểm chuẩn và học phí ngành Khoa học máy tính giữa UET và PTIT]
+Đáp án: Điểm chuẩn ngành Khoa học máy tính khối A00 tại UET là 28.19; Học phí ngành Khoa học máy tính tại UET năm 2025 chưa được nêu rõ; Học phí ngành Khoa học máy tính tại PTIT năm 2025 chưa được nêu rõ
+Bằng chứng đầu vào:
+- Từ sub-question #1: 28.19
+- Từ sub-question #3: Học phí ngành Khoa học máy tính UET năm 2025 chưa được nêu rõ.
+
+---
+Câu hỏi:
+So sánh điểm chuẩn ngành Khoa học máy tính khối A00 và học phí của ngành này giữa UET và PTIT 2025
+================================================================================
+
+
+================================================================================
+[READER_SYSTEM_PROMPT]
+================================================================================
+"Bạn là một AI tư vấn tuyển sinh đại học chuyên nghiệp. Hãy trả lời các câu hỏi một cách chính xác, hữu ích và thân thiện. Có thể sử dụng những thông tin được cung cấp để đưa ra câu trả lời hoặc lời khuyên tốt nhất. Nếu được cung cấp link nguồn thì thêm vào phần cuối câu trả lời (chọn đúng nguồn chứa thông tin được lấy), nếu không được cung cấp thì không thêm.
+
+================================================================================
+[READER_CONTEXT]
+================================================================================
+[1] Đại Học Quốc Gia Hà Nội 2025 chính xác
+
+URL: https://diemthi.tuyensinh247.com/diem-chuan/dai-hoc-cong-nghe-dai-hoc-quoc-gia-ha-noi-QHI.html
+
+[BANG]
+|Tên ngành|Tổ hợp môn|Điểm chuẩn|Ghi chú|
+|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
+| Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến |
+| Công nghệ thông tin | A00; A01; X06; X26; D01 | 28.19 |  |  |  |
+| Công nghệ nông nghiệp | A00; A01; X06; X26; D01; B00 | 22 |  |  |  |
+| Kỹ thuật điều khiển và tự động hóa | A00; A01; X06; X26; D01 | 27.9 |  |  |  |
+| Trí tuệ nhân tạo | A00; A01; X06; X26; D01 | 27.75 |  |  |  |
+| Kỹ thuật năng lượng | A00; A01; X06; X26; D01 | 24.87 |  |  |  |
+| Hệ thống thông tin | A00; A01; X06; X26; D01 | 26.38 |  |  |  |
+| Mạng máy tính và truyền thông dữ liệu | A00; A01; X06; X26; D01 | 26.73 |  |  |  |
+| Kỹ thuật Robot | A00; A01; X06; X26; D01 | 26 |  |  |  |
+
+---
+
+[2] THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo
+
+URL: https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf
+
+[THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo](https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf)
+
+---
+
+[3] Bước suy luận #5
+
+URL: multihop://reasoning/sq_5
+
+[Kết quả bước suy luận: so sánh điểm chuẩn và học phí ngành Khoa học máy tính giữa UET và PTIT]
+Đáp án: Điểm chuẩn ngành Khoa học máy tính khối A00 tại UET là 28.19; Học phí ngành Khoa học máy tính tại UET năm 2025 chưa được nêu rõ; Học phí ngành Khoa học máy tính tại PTIT năm 2025 chưa được nêu rõ
+Bằng chứng đầu vào:
+- Từ sub-question #1: 28.19
+- Từ sub-question #3: Học phí ngành Khoa học máy tính UET năm 2025 chưa được nêu rõ.
+
+---
+
+================================================================================
+[READER_FINAL_PROMPT]
+================================================================================
+Hiện tại là năm 2025, sử dụng thông tin mới nhất có thể. 
+Nếu không tìm thấy đủ dữ liệu đáng tin để xây dựng đầy đủ theo form, chỉ trả lời: "Tôi không tìm thấy thông tin phù hợp.".
+Thông tin tham khảo:
+[1] Đại Học Quốc Gia Hà Nội 2025 chính xác
+
+URL: https://diemthi.tuyensinh247.com/diem-chuan/dai-hoc-cong-nghe-dai-hoc-quoc-gia-ha-noi-QHI.html
+
+[BANG]
+|Tên ngành|Tổ hợp môn|Điểm chuẩn|Ghi chú|
+|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
+| Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến |
+| Công nghệ thông tin | A00; A01; X06; X26; D01 | 28.19 |  |  |  |
+| Công nghệ nông nghiệp | A00; A01; X06; X26; D01; B00 | 22 |  |  |  |
+| Kỹ thuật điều khiển và tự động hóa | A00; A01; X06; X26; D01 | 27.9 |  |  |  |
+| Trí tuệ nhân tạo | A00; A01; X06; X26; D01 | 27.75 |  |  |  |
+| Kỹ thuật năng lượng | A00; A01; X06; X26; D01 | 24.87 |  |  |  |
+| Hệ thống thông tin | A00; A01; X06; X26; D01 | 26.38 |  |  |  |
+| Mạng máy tính và truyền thông dữ liệu | A00; A01; X06; X26; D01 | 26.73 |  |  |  |
+| Kỹ thuật Robot | A00; A01; X06; X26; D01 | 26 |  |  |  |
+
+---
+
+[2] THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo
+
+URL: https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf
+
+[THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo](https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf)
+
+---
+
+[3] Bước suy luận #5
+
+URL: multihop://reasoning/sq_5
+
+[Kết quả bước suy luận: so sánh điểm chuẩn và học phí ngành Khoa học máy tính giữa UET và PTIT]
+Đáp án: Điểm chuẩn ngành Khoa học máy tính khối A00 tại UET là 28.19; Học phí ngành Khoa học máy tính tại UET năm 2025 chưa được nêu rõ; Học phí ngành Khoa học máy tính tại PTIT năm 2025 chưa được nêu rõ
+Bằng chứng đầu vào:
+- Từ sub-question #1: 28.19
+- Từ sub-question #3: Học phí ngành Khoa học máy tính UET năm 2025 chưa được nêu rõ.
+
+---
+Câu hỏi:
+So sánh điểm chuẩn ngành Khoa học máy tính khối A00 và học phí của ngành này giữa UET và PTIT 2025
+INFO:     14.177.56.155:0 - "POST /pre_inference HTTP/1.1" 200 OK
+INFO:     14.177.56.155:0 - "POST /inference/6d0a8248-e87f-40e7-9be8-462d377bb9a7 HTTP/1.1" 200 OK
+[VLLM] CallType.READER | Instruction length: 362 | Prompt length: 2241 | kwargs: None
+
+================================================================================
+[LLM_CALL CallType.READER]
+================================================================================
+{
+  "call_type": "CallType.READER",
+  "model_id": "Qwen/Qwen3-4B$$$1",
+  "max_tokens": "[REDACTED]",
+  "temperature": 0.5,
+  "top_p": 0.9,
+  "top_k": 40,
+  "params": {
+    "model_id": "Qwen/Qwen3-4B$$$1",
+    "use_websearch": true,
+    "use_localdb": true,
+    "auto_source": true,
+    "max_query": 3,
+    "query_score_threshold": 0.5,
+    "engine_type": "google",
+    "domain_restrict": false,
+    "school_domain": false,
+    "llm_rerank": false,
+    "page_score_threshold": 0.5,
+    "chunk_score_threshold": 0.5,
+    "k_docs": 5,
+    "k_pages": 3,
+    "page_rerank": false,
+    "chunk_rerank": true,
+    "include_pdf": true,
+    "include_image": true,
+    "merge_table": false,
+    "merge_neighbor": false,
+    "enable_quality_gate": true,
+    "quality_log": true,
+    "max_tokens": "[REDACTED]",
+    "temperature": 0.5,
+    "top_p": 0.9,
+    "top_k": 40,
+    "max_history": 8,
+    "quality_min_score": 0.58,
+    "quality_min_relevance": 0.25,
+    "quality_min_trust": 0.5,
+    "quality_strict_mode": true,
+    "quality_max_docs": 3,
+    "source_safety_filter": true,
+    "quality_force_for_rich_media": true,
+    "hybrid_retrieval": true,
+    "auto_multi_hop": true,
+    "multi_hop_complexity_threshold": 2,
+    "reader_table_rescue_max_sources": 2,
+    "reader_table_rescue_max_chars": 6000,
+    "sufficiency_score": 0.18923723697662354,
+    "low_confidence": false
+  },
+  "instruction_chars": 362,
+  "prompt_chars": 2241
+}
+
+================================================================================
+[LLM_SYSTEM_PROMPT CallType.READER]
+================================================================================
+"Bạn là một AI tư vấn tuyển sinh đại học chuyên nghiệp. Hãy trả lời các câu hỏi một cách chính xác, hữu ích và thân thiện. Có thể sử dụng những thông tin được cung cấp để đưa ra câu trả lời hoặc lời khuyên tốt nhất. Nếu được cung cấp link nguồn thì thêm vào phần cuối câu trả lời (chọn đúng nguồn chứa thông tin được lấy), nếu không được cung cấp thì không thêm.
+
+================================================================================
+[LLM_USER_PROMPT CallType.READER]
+================================================================================
+Hiện tại là năm 2025, sử dụng thông tin mới nhất có thể. 
+Nếu không tìm thấy đủ dữ liệu đáng tin để xây dựng đầy đủ theo form, chỉ trả lời: "Tôi không tìm thấy thông tin phù hợp.".
+Thông tin tham khảo:
+[1] Đại Học Quốc Gia Hà Nội 2025 chính xác
+
+URL: https://diemthi.tuyensinh247.com/diem-chuan/dai-hoc-cong-nghe-dai-hoc-quoc-gia-ha-noi-QHI.html
+
+[BANG]
+|Tên ngành|Tổ hợp môn|Điểm chuẩn|Ghi chú|
+|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
+| Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến | Tra cứu tại: Tuyensinh247.com - Học trực tuyến |
+| Công nghệ thông tin | A00; A01; X06; X26; D01 | 28.19 |  |  |  |
+| Công nghệ nông nghiệp | A00; A01; X06; X26; D01; B00 | 22 |  |  |  |
+| Kỹ thuật điều khiển và tự động hóa | A00; A01; X06; X26; D01 | 27.9 |  |  |  |
+| Trí tuệ nhân tạo | A00; A01; X06; X26; D01 | 27.75 |  |  |  |
+| Kỹ thuật năng lượng | A00; A01; X06; X26; D01 | 24.87 |  |  |  |
+| Hệ thống thông tin | A00; A01; X06; X26; D01 | 26.38 |  |  |  |
+| Mạng máy tính và truyền thông dữ liệu | A00; A01; X06; X26; D01 | 26.73 |  |  |  |
+| Kỹ thuật Robot | A00; A01; X06; X26; D01 | 26 |  |  |  |
+
+---
+
+[2] THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo
+
+URL: https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf
+
+[THÔNG TIN TUYỂN SINH NĂM 2025 BẬC ĐẠI HỌC Hình thức đào tạo](https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2025-QHI.pdf)
+
+---
+
+[3] Bước suy luận #5
+
+URL: multihop://reasoning/sq_5
+
+[Kết quả bước suy luận: so sánh điểm chuẩn và học phí ngành Khoa học máy tính giữa UET và PTIT]
+Đáp án: Điểm chuẩn ngành Khoa học máy tính khối A00 tại UET là 28.19; Học phí ngành Khoa học máy tính tại UET năm 2025 chưa được nêu rõ; Học phí ngành Khoa học máy tính tại PTIT năm 2025 chưa được nêu rõ
+Bằng chứng đầu vào:
+- Từ sub-question #1: 28.19
+- Từ sub-question #3: Học phí ngành Khoa học máy tính UET năm 2025 chưa được nêu rõ.
+
+---
+Câu hỏi:
+So sánh điểm chuẩn ngành Khoa học máy tính khối A00 và học phí của ngành này giữa UET và PTIT 2025
+[VLLm] Using Qwen Reader Lora
+INFO 05-24 14:44:05 [async_llm_engine.py:209] Added request aea9336295224164b207714919d66af0.
+INFO 05-24 14:44:05 [metrics.py:386] Avg prompt throughput: 177.9 tokens/s, Avg generation throughput: 25.2 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 2.4%, CPU KV cache usage: 0.0%.
+INFO 05-24 14:44:09 [async_llm_engine.py:177] Finished request aea9336295224164b207714919d66af0.
+
+================================================================================
+[FINAL_RESPONSE]
+================================================================================
+{
+  "stream_id": "6d0a8248-e87f-40e7-9be8-462d377bb9a7",
+  "response_chars": 386,
+  "response": "Điểm chuẩn ngành Khoa học máy tính khối A00 tại UET là 28.19. Tuy nhiên, thông tin về học phí ngành này tại UET và PTIT năm 2025 chưa được nêu rõ. Do đó, không thể so sánh học phí giữa hai trường. \n\nNếu bạn cần thêm thông tin về học phí, vui lòng kiểm tra trực tiếp trên trang web của các trường hoặc liên hệ với văn phòng tuyển sinh. \n\nNguồn: [1] Đại Học Quốc Gia Hà Nội 2025 chính xác",
+  "rag_sources": 3,
+  "web_sources": 3
+}
+
+================================================================================
+[STORE_CHAT_DATA_SUMMARY]
+================================================================================
+{
+  "stream_id": "6d0a8248-e87f-40e7-9be8-462d377bb9a7",
+  "forward_kwargs": {
+    "session_id": "7c157859-6b6b-47d1-b827-06deff475ac9",
+    "user_id": "4a8e2463-3c62-4481-a7c0-7891d5b83811",
+    "user_text": "So sánh điểm chuẩn ngành Khoa học máy tính khối A00 và học phí của ngành này giữa UET và PTIT 2025",
+    "user_timestamp": "2026-05-24T14:43:36.493367+00:00"
+  },
+  "model_output_keys": "[REDACTED]"
+}

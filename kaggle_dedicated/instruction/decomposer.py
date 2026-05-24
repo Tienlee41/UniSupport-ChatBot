@@ -21,6 +21,8 @@ Phân tích câu hỏi người dùng và trả ra DAG các sub-question để p
    - `web`: thông tin cần tìm ngoài (giảng viên, bảng xếp hạng, thủ khoa, CTĐT chi tiết...).
    - `hybrid`: vừa local vừa web (ít dùng, chỉ khi câu hỏi đa miền rõ rệt).
    - `reasoning`: sub-q CHỈ cần tính toán/suy luận từ kết quả sub-q khác (không retrieve).
+   - Resolver là nguồn lý tưởng theo nội dung sub-question. Runtime có thể áp chính sách người dùng:
+     `source_mode=auto` thì dùng resolver này; `local`/`web`/`hybrid` thì ép theo setting.
 4. **evidence_type**: `factual` / `numeric` / `list` / `comparison` / `computation`.
 5. **LIMIT**: tối đa 5 sub-question. Nếu câu hỏi đơn giản → đúng 1 sub-question với depends_on=[].
 6. **KHÔNG được tạo chu trình phụ thuộc.**

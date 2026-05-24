@@ -47,8 +47,12 @@ class GenerationParams(TypedDict):
     # Search
     use_websearch: NotRequired[bool]
     use_localdb: NotRequired[bool]
-    # Khi True (mặc định) → multi-hop decomposer tự chọn nguồn (local_db / web / hybrid) cho mỗi sub-q.
-    # Khi False → bỏ qua quyết định của decomposer, mọi sub-q chạy theo use_websearch/use_localdb do user chọn.
+    # Source policy for retrieval:
+    # - auto: multi-hop decomposer chooses local_db / web / hybrid per sub-question.
+    # - local/web/hybrid: force every retrieval sub-question to the selected source mode.
+    source_mode: NotRequired[Literal["auto", "local", "web", "hybrid"]]
+    # Backward-compatible flag. True maps to source_mode=auto; False derives mode
+    # from use_websearch/use_localdb when source_mode is not provided.
     auto_source: NotRequired[bool]
     max_query: NotRequired[int]
     query_score_threshold: NotRequired[float]

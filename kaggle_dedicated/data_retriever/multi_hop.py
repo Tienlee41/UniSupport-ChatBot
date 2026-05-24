@@ -575,6 +575,25 @@ class MultiHopOrchestrator:
         self._dep_evidence_types: dict[int, str] = {}
         self._per_sq_view: dict[int, SubQuestionResult] = {}
 
+    @staticmethod
+    def _source_mode(params: "GenerationParams") -> str:
+        raw = str(params.get("source_mode", "") or "").lower()  # type: ignore[attr-defined]
+        if raw in {"auto", "local", "web", "hybrid"}:
+            return raw
+
+        if bool(params.get("auto_source", True)):  # type: ignore[attr-defined]
+            return "auto"
+
+        use_local = bool(params.get("use_localdb", False))  # type: ignore[attr-defined]
+        use_web = bool(params.get("use_websearch", False))  # type: ignore[attr-defined]
+        if use_local and use_web:
+            return "hybrid"
+        if use_local:
+            return "local"
+        if use_web:
+            return "web"
+        return "auto"
+
     async def retrieve(
         self, question: str, params: "GenerationParams"
     ) -> tuple[list[WebSource], list[RagSource], Optional[MultiHopTrace]]:
@@ -710,13 +729,11 @@ class MultiHopOrchestrator:
                 f"text_chars={len(src.get('text', '') or '')}"
             )
 
-        # Resilient fallback: local_db rỗng → thử web (nếu config cho phép).
-        # NOTE: chỉ chạy khi auto_source=True (decomposer được tự chọn nguồn).
-        # Khi user tắt auto_source thì tôn trọng tuyệt đối lựa chọn use_websearch/use_localdb,
-        # KHÔNG bí mật bật web khi local empty.
-        auto_source_flag = bool(params.get("auto_source", True))  # type: ignore[attr-defined]
+        # Resilient fallback: local_db rỗng → thử web nếu source_mode=auto.
+        # Khi user ép source_mode=local/web/hybrid thì tôn trọng setting đó.
+        source_mode = self._source_mode(params)
         if (
-            auto_source_flag
+            source_mode == "auto"
             and sq.resolver == "local_db"
             and not rag
             and self.config.fallback_web_when_local_empty
@@ -925,34 +942,34 @@ class MultiHopOrchestrator:
         # Ngăn đệ quy: sub-q không được phép gọi lại Orchestrator.
         p["use_multi_hop"] = False
 
-        # auto_source=True (mặc định) → resolver của decomposer quyết định nguồn cho sub-q.
-        # auto_source=False → tôn trọng use_websearch/use_localdb do user chọn từ UI;
-        #                     resolver chỉ còn ý nghĩa metadata (vẫn dùng cho reasoning step).
-        auto_source = bool(p.get("auto_source", True))
-        if auto_source:
+        source_mode = self._source_mode(p)
+        p["source_mode"] = source_mode
+        p["auto_source"] = source_mode == "auto"
+
+        # source_mode=auto → resolver của decomposer quyết định nguồn cho sub-q.
+        # source_mode=local/web/hybrid → setting của user ép nguồn cho mọi sub-q retrieval.
+        if source_mode == "auto":
             if sq.resolver == "local_db":
                 p["use_localdb"] = True
                 p["use_websearch"] = False
-                if (
-                    bool(params.get("use_websearch", False))  # type: ignore[attr-defined]
-                    and bool(p.get("hybrid_retrieval", True))
-                    and (sq.evidence_type or "").lower() in {"list", "comparison", "computation"}
-                ):
-                    p["use_websearch"] = True
             elif sq.resolver == "web":
                 p["use_localdb"] = False
                 p["use_websearch"] = True
             elif sq.resolver == "hybrid":
                 p["use_localdb"] = True
                 p["use_websearch"] = True
-        else:
-            # Khi auto_source=False: KHÔNG động vào use_localdb/use_websearch — giữ nguyên user setting.
-            # (resolver=reasoning vẫn không retrieve, được handle ở _execute_reasoning_subq.)
-            self.logger.log(
-                f"  SQ#{sq.id} auto_source=OFF → forced "
-                f"localdb={bool(p.get('use_localdb'))} websearch={bool(p.get('use_websearch'))} "
-                f"(resolver={sq.resolver} bị bỏ qua)"
-            )
+            else:
+                p["use_localdb"] = True
+                p["use_websearch"] = True
+        elif source_mode == "local":
+            p["use_localdb"] = True
+            p["use_websearch"] = False
+        elif source_mode == "web":
+            p["use_localdb"] = False
+            p["use_websearch"] = True
+        elif source_mode == "hybrid":
+            p["use_localdb"] = True
+            p["use_websearch"] = True
 
         # Sub-q đã là atomic, không cần fan-out thêm.
         if (sq.evidence_type or "").lower() in {"list", "comparison", "computation"}:
@@ -963,7 +980,7 @@ class MultiHopOrchestrator:
         p.setdefault("k_pages", 3)
         p.setdefault("k_docs", 5)
         self.logger.log(
-            f"  SQ#{sq.id} source-decision: auto_source={auto_source} "
+            f"  SQ#{sq.id} source-decision: source_mode={source_mode} "
             f"resolver={sq.resolver} -> localdb={bool(p.get('use_localdb'))} "
             f"websearch={bool(p.get('use_websearch'))} max_query={p.get('max_query')}"
         )

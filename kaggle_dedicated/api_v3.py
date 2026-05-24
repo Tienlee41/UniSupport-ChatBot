@@ -1601,6 +1601,43 @@ async def main():
         async def pre_inference(self, request: WorkerChatRequest) -> ModelPreOutput:
             stream_id = str(uuid.uuid4())
             params = request["params"]
+
+            def normalize_source_params() -> None:
+                k_docs = int(params.get("k_docs") or 0)
+                k_pages = int(params.get("k_pages") or 0)
+                if k_docs <= 0 and k_pages <= 0 and not params.get("use_localdb"):
+                    return
+
+                raw_mode = str(params.get("source_mode") or "").lower()
+                if raw_mode in {"auto", "local", "web", "hybrid"}:
+                    source_mode = raw_mode
+                elif bool(params.get("auto_source", True)):
+                    source_mode = "auto"
+                else:
+                    use_local = bool(params.get("use_localdb"))
+                    use_web = bool(params.get("use_websearch"))
+                    if use_local and use_web:
+                        source_mode = "hybrid"
+                    elif use_local:
+                        source_mode = "local"
+                    elif use_web:
+                        source_mode = "web"
+                    else:
+                        source_mode = "auto"
+
+                params["source_mode"] = source_mode
+                params["auto_source"] = source_mode == "auto"
+                if source_mode in {"auto", "hybrid"}:
+                    params["use_localdb"] = True
+                    params["use_websearch"] = True
+                elif source_mode == "local":
+                    params["use_localdb"] = True
+                    params["use_websearch"] = False
+                elif source_mode == "web":
+                    params["use_localdb"] = False
+                    params["use_websearch"] = True
+
+            normalize_source_params()
             params.setdefault("enable_quality_gate", False)
             params.setdefault("quality_log", params["enable_quality_gate"])
             params.setdefault("quality_min_score", 0.58)
