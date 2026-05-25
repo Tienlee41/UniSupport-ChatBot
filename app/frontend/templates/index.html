@@ -178,12 +178,25 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="control-group" title="Bật: lọc và chấm điểm tài liệu web sau tìm kiếm. Tắt: giữ nguyên kết quả tìm kiếm thô.">
-                                <label for="quality-gate-checkbox" class="control-label">Bộ lọc chất lượng (Quality Gate):</label>
+                            <div class="control-group" title="Bật: lọc URL sau web search/page rerank và trước khi crawl. Tắt: crawl theo kết quả tìm kiếm/rerank.">
+                                <label for="quality-gate-checkbox" class="control-label">QualityGate trước crawl:</label>
                                 <div class="control-input">
                                     <div class="slider-container">
                                         <div class="slider-switch">
                                             <input type="checkbox" id="quality-gate-checkbox" checked>
+                                            <span class="slider-track">
+                                                <span class="slider-thumb"></span>
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="control-group" title="Bật: lọc nguồn và chunk sau crawl, extract, chunking/rerank trước khi đưa vào ngữ cảnh RAG.">
+                                <label for="chunk-gate-checkbox" class="control-label">ChunkGate sau chunking:</label>
+                                <div class="control-input">
+                                    <div class="slider-container">
+                                        <div class="slider-switch">
+                                            <input type="checkbox" id="chunk-gate-checkbox" checked>
                                             <span class="slider-track">
                                                 <span class="slider-thumb"></span>
                                             </span>

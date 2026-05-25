@@ -20,36 +20,47 @@ _OPEN_STEPS: dict[str, list[int]] = {}
 
 
 STEP_NOTES: dict[str, str] = {
-    "SOURCE_ROUTER": "Chọn nguồn truy xuất: local DB, web search, hybrid hoặc không truy xuất.",
-    "LOCAL_DB": "Tìm tài liệu trong cơ sở dữ liệu nội bộ theo school_id và section.",
-    "QUERY": "Chuẩn hóa câu hỏi hoặc sinh truy vấn tìm kiếm từ câu hỏi/sub-query.",
-    "RETRIEVAL_CONFIG": "Ghi lại cấu hình retrieval đang được dùng cho truy vấn hiện tại.",
-    "WEB_SEARCH": "Gửi truy vấn lên search engine và nhận danh sách URL ứng viên.",
-    "WEB_SEARCH_LLM_RERANK": "Xếp hạng lại các kết quả web ở mức trang; nếu tắt thì ghi rõ lý do bỏ qua.",
-    "CRAWL_EXTRACT": "Chọn URL cần tải, crawl trang và lấy HTML/snippet đầu vào cho trích xuất.",
-    "SNIPPET_CHECK": "Đánh giá snippet có đủ dùng không để tránh crawl không cần thiết.",
-    "CONTENT_EXTRACT": "Chuyển HTML/PDF/image đã tải thành web source dạng text.",
-    "QUALITY_GATE": "Kiểm tra độ liên quan, độ tin cậy và an toàn nguồn trước khi đưa vào RAG.",
-    "CHUNKING": "Cắt nội dung nguồn thành các chunk ứng viên cho RAG.",
-    "RERANK_CHUNK": "Chấm/rerank các chunk theo truy vấn và giữ chunk phù hợp nhất.",
-    "DEDUP": "Gộp, khử trùng lặp và xử lý danh sách chunk cuối cho reader.",
-    "MULTIHOP_DECOMPOSE": "Phân rã câu hỏi phức tạp thành DAG các sub-query.",
-    "MULTIHOP_PLAN": "Ghi kế hoạch multi-hop gồm sub-query, thứ tự phụ thuộc và resolver.",
-    "MULTIHOP_EXECUTE": "Chạy các sub-query đã sẵn sàng theo thứ tự topo; các sub-query độc lập chạy song song.",
-    "MULTIHOP_AGGREGATE": "Gộp evidence từ toàn bộ sub-query và khử trùng lặp cuối.",
-    "SUBQUERY": "Vòng đời của một sub-query: nhận input, rewrite, retrieve/reason và xuất fact/evidence.",
-    "SUBQUERY_RETRIEVE": "Kết quả retrieval của sub-query sau khi chạy như single-hop.",
-    "SUBQUERY_FALLBACK": "Fallback nguồn truy xuất, ví dụ local DB rỗng thì thử web search.",
-    "REASONING": "Suy luận trên fact/evidence từ các sub-query phụ thuộc.",
-    "FINAL_AGGREGATE": "Tập web sources và RAG chunks cuối cùng trước khi kiểm tra đủ bằng chứng.",
-    "SUFFICIENCY_GATE": "Kiểm tra ngữ cảnh RAG có đủ để reader trả lời hay không.",
-    "RAG_CONTEXT": "Format các RAG chunks thành context đưa vào reader.",
-    "FINAL_READER": "Reader sinh câu trả lời cuối cùng từ câu hỏi và ngữ cảnh RAG.",
+    "REQUEST": "Nhan cau hoi nguoi dung va cau hinh runtime dau vao.",
+    "SOURCE_ROUTER": "Chon nguon truy xuat: local DB, web search, hybrid hoac khong truy xuat.",
+    "LOCAL_DB": "Tim tai lieu trong co so du lieu noi bo theo school_id va section.",
+    "QUERY": "Sinh hoac chuan hoa truy van tim kiem tu cau hoi/sub-query.",
+    "RETRIEVAL_CONFIG": "Ghi lai cau hinh retrieval dang duoc dung cho truy van hien tai.",
+    "WEB_SEARCH": "Gui truy van len search engine va nhan danh sach URL ung vien.",
+    "WEB_SEARCH_LLM_RERANK": "Xep hang lai ket qua web o muc trang; neu tat thi ghi ro ly do bo qua.",
+    "QUALITY_GATE": "Loc URL truoc crawl bang relevance, trust, safety va duplicate check.",
+    "SNIPPET_CHECK": "Danh gia snippet co du dung khong de tranh crawl khong can thiet.",
+    "CRAWL_EXTRACT": "Chon URL can tai va crawl/snippet thanh HTML dau vao.",
+    "CONTENT_EXTRACT": "Chuyen HTML/PDF/image da tai thanh web source dang text.",
+    "CHUNKING": "Cat noi dung nguon thanh cac chunk ung vien cho RAG.",
+    "RERANK_CHUNK": "Cham/rerank cac chunk theo truy van va giu chunk phu hop nhat.",
+    "DEDUP": "Gop, khu trung lap va xu ly danh sach chunk cuoi cho reader.",
+    "CHUNK_GATE": "Loc web sources va chunks sau crawl/chunking truoc khi dua vao context RAG.",
+    "MULTIHOP_DECOMPOSE": "Phan ra cau hoi phuc tap thanh DAG cac sub-query.",
+    "MULTIHOP_PLAN": "Ghi ke hoach multi-hop gom sub-query, thu tu phu thuoc va resolver.",
+    "MULTIHOP_EXECUTE": "Chay cac sub-query san sang theo thu tu topo; sub-query doc lap co the chay song song.",
+    "MULTIHOP_AGGREGATE": "Gop evidence tu toan bo sub-query va khu trung lap cuoi.",
+    "SUBQUERY": "Vong doi mot sub-query: input, rewrite, retrieve/reason va fact/evidence dau ra.",
+    "SUBQUERY_RETRIEVE": "Ket qua retrieval cua sub-query sau khi chay nhu single-hop.",
+    "SUBQUERY_FALLBACK": "Fallback nguon truy xuat, vi du local DB rong thi thu web search.",
+    "REASONING": "Suy luan tren fact/evidence tu cac sub-query phu thuoc.",
+    "FINAL_AGGREGATE": "Tap web sources va RAG chunks cuoi cung truoc khi kiem tra du bang chung.",
+    "SUFFICIENCY_GATE": "Kiem tra ngu canh RAG co du de reader tra loi hay khong.",
+    "RAG_CONTEXT": "Format cac RAG chunks thanh context dua vao reader.",
+    "FINAL_READER": "Reader sinh cau tra loi cuoi cung tu cau hoi va ngu canh RAG.",
 }
+
+
+def reset_trace() -> None:
+    global _STEP_COUNTER
+    with _STEP_LOCK:
+        _STEP_COUNTER = 0
+        _OPEN_STEPS.clear()
 
 
 def trace_enabled(params: dict | None = None) -> bool:
     if params and bool(params.get("quality_log", False)):
+        return True
+    if params and bool(params.get("test_trace", False)):
         return True
     return str(os.getenv("BOT_TEST_TRACE", "0")).strip().lower() not in _FALSE_VALUES
 
@@ -92,20 +103,12 @@ def log_step(
     *,
     scope: str | None = None,
 ) -> None:
-    """Print one stable test-trace block.
-
-    Args:
-        step: Pipeline step name, e.g. WEB_SEARCH, QUALITY_GATE.
-        direction: INPUT or OUTPUT.
-        payload: JSON-serializable payload.
-        params: Runtime params; quality_log=True enables output.
-        scope: Optional scope label. Defaults to SQ#n when _trace_subq_id exists.
-    """
+    """Print one stable test-trace block."""
     if not trace_enabled(params):
         return
     label = trace_scope(params, scope)
     step_number = _next_step_number(label, step, direction)
-    note = STEP_NOTES.get(step, "Ghi lại input/output của bước pipeline.")
+    note = STEP_NOTES.get(step, "Ghi lai input/output cua buoc pipeline.")
     record = {
         "step_number": step_number,
         "scope": label,
@@ -115,7 +118,7 @@ def log_step(
         "data": payload,
     }
     print("\n" + "=" * 80)
-    print(f"[TEST_TRACE][BƯỚC {step_number:03d}][{label}][{step}][{(direction or '').upper()}]")
+    print(f"[TEST_TRACE][BUOC {step_number:03d}][{label}][{step}][{(direction or '').upper()}]")
     print("=" * 80)
     print(json.dumps(record, ensure_ascii=False, indent=2, default=_json_default))
 

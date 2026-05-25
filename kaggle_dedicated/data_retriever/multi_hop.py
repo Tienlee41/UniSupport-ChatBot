@@ -26,6 +26,7 @@ from typing import Awaitable, Callable, Optional, Protocol
 
 from .schema import RagSource, WebSource
 from .retriever.utils import CmdLogger
+from .test_trace import compact_sources, log_step, preview
 
 try:
     from server import GenerationParams
@@ -600,7 +601,28 @@ class MultiHopOrchestrator:
         """Trả (web_sources, rag_sources, trace). Trace=None khi fallback single-hop."""
         # Kiểm tra bật / tắt (runtime override)
         enabled = params.get("use_multi_hop", self.config.enabled)  # type: ignore
+        log_step(
+            "MULTIHOP_DECOMPOSE",
+            "INPUT",
+            {
+                "question": question,
+                "enabled": bool(enabled),
+                "auto_multi_hop": params.get("auto_multi_hop", self.config.auto_detect_complexity),
+                "force_multi_hop": params.get("force_multi_hop", False),
+                "complexity_threshold": params.get("multi_hop_complexity_threshold", self.config.complexity_threshold),
+            },
+            params,
+        )
         if not enabled:
+            log_step(
+                "MULTIHOP_DECOMPOSE",
+                "OUTPUT",
+                {
+                    "mode": "single_hop",
+                    "reason": "multi_hop_disabled",
+                },
+                params,
+            )
             web, rag = await self.base_retriever.retrieve(question, params)
             return web, rag, None
 
@@ -613,6 +635,18 @@ class MultiHopOrchestrator:
                 self.logger.log(
                     f"[AutoGate] simple question -> single-hop "
                     f"(score={score}, threshold={threshold}, reasons={reasons})"
+                )
+                log_step(
+                    "MULTIHOP_DECOMPOSE",
+                    "OUTPUT",
+                    {
+                        "mode": "single_hop",
+                        "reason": "auto_gate_simple_question",
+                        "complexity_score": score,
+                        "threshold": threshold,
+                        "reasons": reasons,
+                    },
+                    params,
                 )
                 web, rag = await self.base_retriever.retrieve(question, params)
                 return web, rag, None
@@ -627,14 +661,69 @@ class MultiHopOrchestrator:
         except Exception as e:
             self.logger.log(f"[Decompose] fail → fallback single-hop ({e})")
             traceback.print_exc()
+            log_step(
+                "MULTIHOP_DECOMPOSE",
+                "OUTPUT",
+                {
+                    "mode": "single_hop",
+                    "reason": "decomposer_error",
+                    "error": str(e),
+                },
+                params,
+            )
             web, rag = await self.base_retriever.retrieve(question, params)
             return web, rag, None
 
         if plan is None or plan.is_trivial:
             self.logger.log("[Decompose] trivial plan → fallback single-hop")
+            log_step(
+                "MULTIHOP_DECOMPOSE",
+                "OUTPUT",
+                {
+                    "mode": "single_hop",
+                    "reason": "trivial_or_empty_plan",
+                    "sub_question_count": 0 if plan is None else len(plan.sub_questions),
+                },
+                params,
+            )
             web, rag = await self.base_retriever.retrieve(question, params)
             return web, rag, None
 
+        log_step(
+            "MULTIHOP_DECOMPOSE",
+            "OUTPUT",
+            {
+                "mode": "multi_hop",
+                "sub_question_count": len(plan.sub_questions),
+            },
+            params,
+        )
+        log_step(
+            "MULTIHOP_PLAN",
+            "INPUT",
+            {
+                "question": question,
+                "raw_sub_question_count": len(plan.sub_questions),
+            },
+            params,
+        )
+        log_step(
+            "MULTIHOP_PLAN",
+            "OUTPUT",
+            {
+                "sub_questions": [
+                    {
+                        "id": sq.id,
+                        "text": sq.text,
+                        "depends_on": sq.depends_on,
+                        "resolver": sq.resolver,
+                        "evidence_type": sq.evidence_type,
+                    }
+                    for sq in plan.sub_questions
+                ],
+            },
+            params,
+        )
         self.logger.log(f"[Decompose] {len(plan.sub_questions)} sub-questions")
         for sq in plan.sub_questions:
             self.logger.log(
@@ -662,6 +751,25 @@ class MultiHopOrchestrator:
                 break
             hop_count += 1
             self.logger.log(f"[Hop {hop+1}] running {len(ready)} sub-q in parallel")
+            log_step(
+                "MULTIHOP_EXECUTE",
+                "INPUT",
+                {
+                    "hop": hop_count,
+                    "ready_sub_questions": [
+                        {
+                            "id": sq.id,
+                            "text": sq.text,
+                            "depends_on": sq.depends_on,
+                            "resolver": sq.resolver,
+                            "evidence_type": sq.evidence_type,
+                        }
+                        for sq in ready
+                    ],
+                    "resolved_dependencies": dict(resolved),
+                },
+                params,
+            )
 
             tasks = [
                 asyncio.create_task(self._execute_subq(sq, resolved, params))
@@ -679,6 +787,24 @@ class MultiHopOrchestrator:
                 else:
                     per_sq[sq.id] = res
                     resolved[sq.id] = res.fact
+            log_step(
+                "MULTIHOP_EXECUTE",
+                "OUTPUT",
+                {
+                    "hop": hop_count,
+                    "finished_sub_questions": [
+                        {
+                            "id": sq.id,
+                            "fact": per_sq.get(sq.id).fact if per_sq.get(sq.id) else "",
+                            "confidence": per_sq.get(sq.id).confidence if per_sq.get(sq.id) else 0.0,
+                            "web_sources": len(per_sq.get(sq.id).web_sources) if per_sq.get(sq.id) else 0,
+                            "rag_sources": len(per_sq.get(sq.id).rag_sources) if per_sq.get(sq.id) else 0,
+                        }
+                        for sq in ready
+                    ],
+                },
+                params,
+            )
 
         # Sub-q chưa chạy (do deps thất bại) — vẫn tạo empty entry
         for sq in plan.sub_questions:
@@ -686,10 +812,41 @@ class MultiHopOrchestrator:
                 per_sq[sq.id] = SubQuestionResult(sub_id=sq.id, rewritten_text=sq.text)
 
         # 3) Aggregate evidence, dedup theo (url, chunk_index)
+        log_step(
+            "MULTIHOP_AGGREGATE",
+            "INPUT",
+            {
+                "sub_question_count": len(plan.sub_questions),
+                "per_sub_question": [
+                    {
+                        "id": sq.id,
+                        "depends_on": sq.depends_on,
+                        "web_sources": len(per_sq.get(sq.id).web_sources) if per_sq.get(sq.id) else 0,
+                        "rag_sources": len(per_sq.get(sq.id).rag_sources) if per_sq.get(sq.id) else 0,
+                        "fact": per_sq.get(sq.id).fact if per_sq.get(sq.id) else "",
+                        "confidence": per_sq.get(sq.id).confidence if per_sq.get(sq.id) else 0.0,
+                    }
+                    for sq in plan.sub_questions
+                ],
+            },
+            params,
+        )
         all_web, all_rag = self._aggregate(per_sq)
         trace = MultiHopTrace(plan=plan, hop_count=hop_count, per_sub_q=per_sq)
         self.logger.log(
             f"[Aggregate] web={len(all_web)} rag={len(all_rag)} hops={hop_count}"
+        )
+        log_step(
+            "MULTIHOP_AGGREGATE",
+            "OUTPUT",
+            {
+                "hop_count": hop_count,
+                "web_sources": len(all_web),
+                "rag_sources": len(all_rag),
+                "web_preview": compact_sources(all_web, "web", limit=10),
+                "rag_preview": compact_sources(all_rag, "rag", limit=10),
+            },
+            params,
         )
         return all_web, all_rag, trace
 
@@ -711,13 +868,70 @@ class MultiHopOrchestrator:
         # ── Reasoning sub-q ──
         if rewritten != sq.text:
             self.logger.log(f"  SQ#{sq.id} rewritten: {rewritten}")
+        log_step(
+            "SUBQUERY",
+            "INPUT",
+            {
+                "id": sq.id,
+                "text": sq.text,
+                "rewritten_text": rewritten,
+                "depends_on": sq.depends_on,
+                "resolved_dependencies": {dep_id: resolved.get(dep_id, "") for dep_id in sq.depends_on},
+                "resolver": sq.resolver,
+                "evidence_type": sq.evidence_type,
+            },
+            params,
+            scope=f"SQ#{sq.id}",
+        )
 
         if sq.resolver == "reasoning":
-            return await self._execute_reasoning_subq(sq, resolved, rewritten, params)
+            result = await self._execute_reasoning_subq(sq, resolved, rewritten, params)
+            log_step(
+                "SUBQUERY",
+                "OUTPUT",
+                {
+                    "id": sq.id,
+                    "rewritten_text": result.rewritten_text,
+                    "fact": result.fact,
+                    "confidence": result.confidence,
+                    "web_sources": len(result.web_sources),
+                    "rag_sources": len(result.rag_sources),
+                    "rag_preview": compact_sources(result.rag_sources, "rag", limit=5),
+                },
+                params,
+                scope=f"SQ#{sq.id}",
+            )
+            return result
 
         # ── Retrieval sub-q ──
         subq_params = self._scoped_params(sq, params)
+        log_step(
+            "SUBQUERY_RETRIEVE",
+            "INPUT",
+            {
+                "id": sq.id,
+                "rewritten_text": rewritten,
+                "resolver": sq.resolver,
+                "depends_on": sq.depends_on,
+                "use_localdb": bool(subq_params.get("use_localdb")),
+                "use_websearch": bool(subq_params.get("use_websearch")),
+                "max_query": subq_params.get("max_query"),
+            },
+            subq_params,
+        )
         web, rag = await self.base_retriever.retrieve(rewritten, subq_params)
+        log_step(
+            "SUBQUERY_RETRIEVE",
+            "OUTPUT",
+            {
+                "id": sq.id,
+                "web_sources": len(web),
+                "rag_sources": len(rag),
+                "web_preview": compact_sources(web, "web", limit=5),
+                "rag_preview": compact_sources(rag, "rag", limit=5),
+            },
+            subq_params,
+        )
         self.logger.log(
             f"  SQ#{sq.id} retrieve-result: web={len(web)} rag={len(rag)} "
             f"localdb={bool(subq_params.get('use_localdb'))} websearch={bool(subq_params.get('use_websearch'))}"
@@ -745,7 +959,30 @@ class MultiHopOrchestrator:
                 SubQuestion(id=sq.id, text=sq.text, depends_on=sq.depends_on, resolver="web"),
                 params,
             )
+            log_step(
+                "SUBQUERY_FALLBACK",
+                "INPUT",
+                {
+                    "id": sq.id,
+                    "reason": "local_db_empty",
+                    "fallback_resolver": "web",
+                    "rewritten_text": rewritten,
+                },
+                fb_params,
+            )
             web, rag = await self.base_retriever.retrieve(rewritten, fb_params)
+            log_step(
+                "SUBQUERY_FALLBACK",
+                "OUTPUT",
+                {
+                    "id": sq.id,
+                    "web_sources": len(web),
+                    "rag_sources": len(rag),
+                    "web_preview": compact_sources(web, "web", limit=5),
+                    "rag_preview": compact_sources(rag, "rag", limit=5),
+                },
+                fb_params,
+            )
             self.logger.log(
                 f"  SQ#{sq.id} fallback-result: web={len(web)} rag={len(rag)} "
                 f"localdb={bool(fb_params.get('use_localdb'))} websearch={bool(fb_params.get('use_websearch'))}"
@@ -780,7 +1017,7 @@ class MultiHopOrchestrator:
             except Exception as e:
                 self.logger.log(f"  SQ#{sq.id} fact extraction failed: {e}")
 
-        return SubQuestionResult(
+        result = SubQuestionResult(
             sub_id=sq.id,
             rewritten_text=rewritten,
             web_sources=web,
@@ -788,6 +1025,22 @@ class MultiHopOrchestrator:
             fact=fact,
             confidence=confidence,
         )
+        log_step(
+            "SUBQUERY",
+            "OUTPUT",
+            {
+                "id": sq.id,
+                "rewritten_text": result.rewritten_text,
+                "fact": result.fact,
+                "confidence": result.confidence,
+                "web_sources": len(result.web_sources),
+                "rag_sources": len(result.rag_sources),
+                "web_preview": compact_sources(result.web_sources, "web", limit=5),
+                "rag_preview": compact_sources(result.rag_sources, "rag", limit=5),
+            },
+            subq_params,
+        )
+        return result
 
     async def _call_fact_extractor(
         self,
@@ -855,6 +1108,22 @@ class MultiHopOrchestrator:
             f"blocks={len(evidence_blocks)} chars={sum(len(b) for b in evidence_blocks)} "
             f"dep_facts={len(dep_facts)}"
         )
+        log_step(
+            "REASONING",
+            "INPUT",
+            {
+                "id": sq.id,
+                "sub_question": sq.text,
+                "rewritten_text": rewritten,
+                "depends_on": sq.depends_on,
+                "evidence_blocks": len(evidence_blocks),
+                "evidence_chars": sum(len(b) for b in evidence_blocks),
+                "dep_facts": [{"sub_question_id": d, "fact": f} for d, f in dep_facts],
+                "evidence_preview": [preview(block, 500) for block in evidence_blocks[:5]],
+            },
+            params,
+            scope=f"SQ#{sq.id}",
+        )
         answer = ""
         confidence = 0.0
         explanation = ""
@@ -914,13 +1183,27 @@ class MultiHopOrchestrator:
                 "chunk_index": 0,
             })
 
-        return SubQuestionResult(
+        result = SubQuestionResult(
             sub_id=sq.id,
             rewritten_text=rewritten,
             rag_sources=synthetic_rag,
             fact=answer,
             confidence=confidence,
         )
+        log_step(
+            "REASONING",
+            "OUTPUT",
+            {
+                "id": sq.id,
+                "answer": answer,
+                "confidence": confidence,
+                "synthetic_rag_sources": len(synthetic_rag),
+                "rag_preview": compact_sources(synthetic_rag, "rag", limit=5),
+            },
+            params,
+            scope=f"SQ#{sq.id}",
+        )
+        return result
 
     def _scoped_params(self, sq: SubQuestion, params: "GenerationParams") -> "GenerationParams":
         """Clone params (deep) và ép cấu hình phù hợp cho sub-q.
@@ -941,6 +1224,10 @@ class MultiHopOrchestrator:
 
         # Ngăn đệ quy: sub-q không được phép gọi lại Orchestrator.
         p["use_multi_hop"] = False
+        p["_trace_subq_id"] = sq.id
+        p["_trace_scope"] = f"SQ#{sq.id}"
+        p["_trace_subq_depends_on"] = list(sq.depends_on)
+        p["_trace_subq_resolver"] = sq.resolver
 
         source_mode = self._source_mode(p)
         p["source_mode"] = source_mode

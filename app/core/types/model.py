@@ -46,12 +46,18 @@ class GenerationParams(TypedDict):
     include_image: NotRequired[bool]
     merge_table: NotRequired[bool]
     merge_neighbor: NotRequired[bool]
-    # Document quality gate (web retrieval)
+    # Retrieval gates: QualityGate runs before crawl, ChunkGate runs after chunking.
     enable_quality_gate: NotRequired[bool]
+    enable_pre_crawl_quality_gate: NotRequired[bool]
+    enable_chunk_gate: NotRequired[bool]
     quality_log: NotRequired[bool]
+    test_trace: NotRequired[bool]
     quality_min_score: NotRequired[float]
     quality_min_relevance: NotRequired[float]
     quality_min_trust: NotRequired[float]
+    quality_semantic_weight: NotRequired[float]
+    pre_crawl_quality_min_score: NotRequired[float]
+    chunk_gate_min_score: NotRequired[float]
     quality_strict_mode: NotRequired[bool]
     quality_max_docs: NotRequired[int]
     # Sampling

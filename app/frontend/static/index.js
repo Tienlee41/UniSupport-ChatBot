@@ -63,6 +63,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const localdbCheckbox = document.getElementById('localdb-checkbox');
     const autoSourceCheckbox = document.getElementById('auto-source-checkbox');
     const qualityGateCheckbox = document.getElementById('quality-gate-checkbox');
+    const chunkGateCheckbox = document.getElementById('chunk-gate-checkbox');
     const maxQueryInput = document.getElementById('max-query');
     const queryScoreThreshold = document.getElementById('query-score-threshold');
     const queryScoreValue = document.getElementById('query-score-value');
@@ -679,7 +680,9 @@ document.addEventListener('DOMContentLoaded', function() {
         let uselocaldb = localdbCheckbox.checked;
         let autoSource = autoSourceCheckbox ? autoSourceCheckbox.checked : true;
         let sourceMode = 'auto';
-        const enableQualityGate = qualityGateCheckbox ? qualityGateCheckbox.checked : false;
+        const enablePreCrawlQualityGate = qualityGateCheckbox ? qualityGateCheckbox.checked : false;
+        const enableChunkGate = chunkGateCheckbox ? chunkGateCheckbox.checked : false;
+        const enableQualityGate = enablePreCrawlQualityGate || enableChunkGate;
 
         // Validate k_docs value before sending
         let kDocsValue = parseInt(searchDocsCount.value);
@@ -821,7 +824,10 @@ document.addEventListener('DOMContentLoaded', function() {
             merge_neighbor: mergeNeighbor,
             llm_rerank: llmrerank,
             enable_quality_gate: enableQualityGate,
+            enable_pre_crawl_quality_gate: enablePreCrawlQualityGate,
+            enable_chunk_gate: enableChunkGate,
             quality_log: enableQualityGate,
+            test_trace: enableQualityGate,
         };
         
         // Add time parameters if specified

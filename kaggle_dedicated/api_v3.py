@@ -80,6 +80,7 @@ print("[Startup] Hugging Face login completed.", flush=True)
 
 print("[Startup] Importing retrieval and server modules...", flush=True)
 from data_retriever import *
+from data_retriever.test_trace import compact_sources, log_step, preview as trace_preview, reset_trace
 from server import *
 print("[Startup] Core modules imported.", flush=True)
 from school_mapper import SchoolMapper
@@ -550,9 +551,18 @@ class LocalRetriever:
         else:
             filtered_docs = []
         return filtered_docs
-    def retrieve(self, keywords: list[dict]) -> tuple[list[WebSource], list[RagSource]]:
+    def retrieve(self, keywords: list[dict], params: GenerationParams | None = None) -> tuple[list[WebSource], list[RagSource]]:
         web_sources: list[WebSource] = []
         rag_sources: list[RagSource] = []
+        log_step(
+            "LOCAL_DB",
+            "INPUT",
+            {
+                "query_count": len(keywords),
+                "queries": keywords,
+            },
+            params or {},
+        )
         try:
             for idx, kw in enumerate(keywords):
                 school_id = kw.get("school_id")
@@ -585,6 +595,17 @@ class LocalRetriever:
             traceback.print_exc()
         _debug_source_list("LOCAL_WEB_SOURCES", web_sources)
         _debug_source_list("LOCAL_RAG_CHUNKS", rag_sources)
+        log_step(
+            "LOCAL_DB",
+            "OUTPUT",
+            {
+                "web_sources": len(web_sources),
+                "rag_sources": len(rag_sources),
+                "web_preview": compact_sources(web_sources, "web", limit=5),
+                "rag_preview": compact_sources(rag_sources, "rag", limit=5),
+            },
+            params or {},
+        )
         return web_sources, rag_sources
         
 class WebRetriever:
@@ -632,6 +653,63 @@ class WebRetriever:
         overlap = len(query_tokens.intersection(text_tokens))
         return overlap / max(1, len(query_tokens))
 
+    def _relevance_score_with_text(self, question: str, title: str, description: str, url: str, text: str) -> float:
+        query_tokens = self._tokenize(_normalize_for_match(question))
+        text_tokens = self._tokenize(_normalize_for_match(f"{title} {description} {url} {text[:4000]}"))
+        if not query_tokens:
+            return 0.0
+        return len(query_tokens.intersection(text_tokens)) / max(1, len(query_tokens))
+
+    def _content_richness_score(self, text: str) -> float:
+        text = text or ""
+        token_count = len(self._tokenize(text))
+        score = 0.0
+        if token_count >= 40:
+            score += 0.35
+        elif token_count >= 20:
+            score += 0.2
+        if _is_table_like_text(text):
+            score += 0.30
+        if re.search(r"\b(?:19|20)\d{2}\b", text) or re.search(r"\d+(?:[,.]\d+)?", text):
+            score += 0.20
+        if len(text) >= 800:
+            score += 0.15
+        return min(1.0, score)
+
+    def _education_level_mismatch_reason(self, question: str, candidate_text: str) -> str | None:
+        question_norm = _normalize_for_match(question)
+        candidate_norm = _normalize_for_match(candidate_text)
+        graduate_terms = [
+            "thac si", "cao hoc", "sau dai hoc", "nghien cuu sinh",
+            "tien si", "dao tao thac si", "dao tao tien si",
+            "master", "masters", "graduate", "postgraduate", "phd",
+        ]
+        if any(term in candidate_norm for term in graduate_terms) and not any(term in question_norm for term in graduate_terms):
+            return "graduate_source_for_undergraduate_query"
+        return None
+
+    def _metric_mismatch_reason(self, question: str, candidate_text: str) -> str | None:
+        question_norm = _normalize_for_match(question)
+        candidate_norm = _normalize_for_match(candidate_text)
+        metric_groups = [
+            ("tuition", ["hoc phi", "tuition", "muc thu", "dong hoc phi"]),
+            ("admission_score", ["diem chuan", "diem trung tuyen", "diem xet tuyen"]),
+            ("floor_score", ["diem san", "diem nhan ho so", "nguong dau vao"]),
+            ("quota", ["chi tieu"]),
+        ]
+        required: list[tuple[str, list[str]]] = [
+            (metric_name, terms)
+            for metric_name, terms in metric_groups
+            if any(term in question_norm for term in terms)
+        ]
+        if not required:
+            return None
+        if any(any(term in candidate_norm for term in terms) for _, terms in required):
+            return None
+        if _is_table_like_text(candidate_text) and re.search(r"\d", candidate_text or ""):
+            return None
+        return "missing_metric:" + ",".join(metric_name for metric_name, _ in required)
+
     def _canonical_url(self, url: str) -> str:
         from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 
@@ -669,10 +747,18 @@ class WebRetriever:
             "admission", "tuition",
         ]
         asks_admission = any(term in question_norm for term in admission_terms)
+        asks_admission = asks_admission or any(term in question_norm for term in [
+            "diem chuan", "diem trung tuyen", "diem xet tuyen", "diem san",
+            "hoc phi", "tuyen sinh", "xet tuyen", "nganh dao tao",
+        ])
         if asks_admission and any(bad in domain for bad in hard_bad_domains):
             return f"bad_domain_for_admission:{domain}"
         if asks_admission and sum(1 for term in job_terms if term in merged) >= 2:
             return "job_content_for_admission_query"
+        if asks_admission:
+            level_reason = self._education_level_mismatch_reason(question, merged)
+            if level_reason:
+                return level_reason
         if len(self._tokenize(text)) < 20 and not source.get("files"):
             return "too_little_content"
         return None
@@ -705,7 +791,7 @@ class WebRetriever:
                 accepted_rag.append(source)
         return accepted_web, accepted_rag
 
-    def _quality_audit(
+    def _chunk_gate(
         self,
         question: str,
         web_sources: list[WebSource],
@@ -713,14 +799,41 @@ class WebRetriever:
         params: GenerationParams
     ) -> tuple[list[WebSource], list[RagSource]]:
         quality_log = params.get("quality_log", True)
+        gate_label = "ChunkGate"
+        min_score = float(params.get("chunk_gate_min_score", params.get("quality_min_score", 0.58)))
         min_relevance = float(params.get("quality_min_relevance", 0.25))
         min_trust = float(params.get("quality_min_trust", 0.50))
+        max_docs = int(params.get("quality_max_docs", params.get("k_pages", len(web_sources) or 1)))
+        strict = bool(params.get("quality_strict_mode", True))
 
         if quality_log:
-            print("\n[QualityGate] STEP 3/3 - Validate web results")
-            print(f"[QualityGate] Thresholds -> relevance>={min_relevance:.2f}, trust>={min_trust:.2f}")
+            print(f"\n[{gate_label}] STEP 3/3 - Validate crawled sources and selected chunks")
+            print(
+                f"[{gate_label}] Thresholds -> final_score>={min_score:.2f}, "
+                f"relevance>={min_relevance:.2f}, trust>={min_trust:.2f}, "
+                f"strict={strict}, max_docs={max_docs}"
+            )
+        log_step(
+            "CHUNK_GATE",
+            "INPUT",
+            {
+                "question": question,
+                "web_source_count": len(web_sources),
+                "rag_source_count": len(rag_sources),
+                "thresholds": {
+                    "min_score": min_score,
+                    "min_relevance": min_relevance,
+                    "min_trust": min_trust,
+                    "strict": strict,
+                    "max_docs": max_docs,
+                },
+                "web_sources": compact_sources(web_sources, "web", limit=10),
+                "rag_sources": compact_sources(rag_sources, "rag", limit=10),
+            },
+            params,
+        )
 
-        accepted_web_sources: list[WebSource] = []
+        accepted_candidates: list[tuple[WebSource, float, str]] = []
         accepted_urls: set[str] = set()
         seen_urls: set[str] = set()
         for idx, source in enumerate(web_sources, 1):
@@ -730,59 +843,123 @@ class WebRetriever:
             canonical_url = self._canonical_url(url)
             if canonical_url and canonical_url in seen_urls:
                 if quality_log:
-                    print(f"[QualityGate] [{idx:02d}] DROP | reason=duplicate_url | url={url}")
+                    print(f"[{gate_label}] [{idx:02d}] DROP | reason=duplicate_url | url={url}")
                 continue
             safety_reason = self._source_safety_reason(question, source)
             if safety_reason:
                 if quality_log:
-                    print(f"[QualityGate] [{idx:02d}] DROP | reason={safety_reason} | title={title[:80]} | url={url}")
+                    print(f"[{gate_label}] [{idx:02d}] DROP | reason={safety_reason} | title={title[:80]} | url={url}")
                 continue
-            relevance = self._relevance_score(question, title, description, url)
+            text = source.get("text", "") or ""
+            candidate_text = f"{title} {description} {url} {text[:3000]}"
+            metric_reason = self._metric_mismatch_reason(question, candidate_text)
+            if metric_reason:
+                if quality_log:
+                    print(f"[{gate_label}] [{idx:02d}] DROP | reason={metric_reason} | title={title[:80]} | url={url}")
+                continue
+            relevance = self._relevance_score_with_text(question, title, description, url, text)
             trust = self._domain_trust(url)
-            is_ok = relevance >= min_relevance and trust >= min_trust
+            richness = self._content_richness_score(text)
+            final_score = 0.50 * relevance + 0.30 * trust + 0.20 * richness
+            is_ok = (
+                final_score >= min_score and relevance >= min_relevance and trust >= min_trust
+                if strict else
+                final_score >= min_score or (relevance >= min_relevance and trust >= min_trust)
+            )
 
             if quality_log:
                 status = "PASS" if is_ok else "DROP"
                 print(
-                    f"[QualityGate] [{idx:02d}] {status} | rel={relevance:.3f} trust={trust:.3f} | "
+                    f"[{gate_label}] [{idx:02d}] {status} | final={final_score:.3f} "
+                    f"rel={relevance:.3f} trust={trust:.3f} rich={richness:.3f} | "
                     f"title={title[:80]} | url={url}"
                 )
 
             if is_ok:
-                accepted_web_sources.append(source)
+                accepted_candidates.append((source, final_score, canonical_url))
                 if canonical_url:
-                    accepted_urls.add(canonical_url)
                     seen_urls.add(canonical_url)
 
+        accepted_candidates.sort(key=lambda item: item[1], reverse=True)
+        if max_docs > 0:
+            accepted_candidates = accepted_candidates[:max_docs]
+        accepted_web_sources = [source for source, _, _ in accepted_candidates]
+        accepted_urls = {canonical for _, _, canonical in accepted_candidates if canonical}
+
         accepted_rag_sources: list[RagSource] = []
-        for source in rag_sources:
+        for idx, source in enumerate(rag_sources, 1):
             source_url = self._canonical_url(source.get("url", ""))
-            if (not web_sources and not accepted_urls) or (source_url and source_url in accepted_urls):
-                accepted_rag_sources.append(source)
+            if web_sources and (not source_url or source_url not in accepted_urls):
+                if quality_log:
+                    print(f"[{gate_label}] chunk#{idx:02d} DROP | reason=source_url_not_accepted | url={source.get('url', '')}")
+                continue
+            chunk_text = source.get("text", "") or ""
+            chunk_surface = f"{source.get('title', '')} {source.get('url', '')} {chunk_text}"
+            chunk_reason = self._education_level_mismatch_reason(question, chunk_surface)
+            if not chunk_reason:
+                chunk_reason = self._metric_mismatch_reason(question, chunk_surface)
+            if not chunk_reason and len(self._tokenize(chunk_text)) < 12:
+                chunk_reason = "chunk_too_little_content"
+            if chunk_reason:
+                if quality_log:
+                    print(
+                        f"[{gate_label}] chunk#{idx:02d} DROP | reason={chunk_reason} | "
+                        f"title={source.get('title', '')[:80]} | url={source.get('url', '')}"
+                    )
+                continue
+            accepted_rag_sources.append(source)
 
         if quality_log:
             print(
-                f"[QualityGate] Result -> web_sources={len(accepted_web_sources)}/{len(web_sources)}, "
+                f"[{gate_label}] Result -> web_sources={len(accepted_web_sources)}/{len(web_sources)}, "
                 f"rag_sources={len(accepted_rag_sources)}/{len(rag_sources)}"
             )
-        _debug_source_list("WEB_ACCEPTED_SOURCES", accepted_web_sources)
-        _debug_source_list("RAG_ACCEPTED_CHUNKS", accepted_rag_sources)
+        _debug_source_list("CHUNKGATE_ACCEPTED_WEB_SOURCES", accepted_web_sources)
+        _debug_source_list("CHUNKGATE_ACCEPTED_CHUNKS", accepted_rag_sources)
+        log_step(
+            "CHUNK_GATE",
+            "OUTPUT",
+            {
+                "accepted_web_sources": len(accepted_web_sources),
+                "accepted_rag_sources": len(accepted_rag_sources),
+                "dropped_web_sources": len(web_sources) - len(accepted_web_sources),
+                "dropped_rag_sources": len(rag_sources) - len(accepted_rag_sources),
+                "web_sources": compact_sources(accepted_web_sources, "web", limit=10),
+                "rag_sources": compact_sources(accepted_rag_sources, "rag", limit=10),
+            },
+            params,
+        )
         return accepted_web_sources, accepted_rag_sources
 
     async def retrive(self, question: str, params: GenerationParams) -> tuple[list[WebSource], list[RagSource]]:
         enable_quality_gate = params.get("enable_quality_gate", False)
+        enable_chunk_gate = params.get("enable_chunk_gate", enable_quality_gate)
         rich_media_enabled = bool(params.get("include_pdf") or params.get("include_image"))
         if rich_media_enabled and params.get("quality_force_for_rich_media", True):
             if not enable_quality_gate:
                 print("[QualityGate] Forced ON because include_pdf/include_image is enabled")
             enable_quality_gate = True
+            enable_chunk_gate = True
             params["enable_quality_gate"] = True
+            params["enable_pre_crawl_quality_gate"] = True
+            params["enable_chunk_gate"] = True
         quality_log = params.get("quality_log", enable_quality_gate)
         params["quality_log"] = quality_log
 
         if quality_log:
             print("\n[QualityGate] STEP 1/3 - Send query to keyword extractor")
             print(f"[QualityGate] Question: {question}")
+        log_step(
+            "QUERY",
+            "INPUT",
+            {
+                "question": question,
+                "max_query": params.get("max_query", 1),
+                "school_domain": params.get("school_domain", False),
+                "purpose": "keyword_extractor_for_web_search",
+            },
+            params,
+        )
 
         data = await self.llm_keywords.keywords(question, params)
         max_query = params.get("max_query", 1)
@@ -801,25 +978,60 @@ class WebRetriever:
         queries = queries[:max_query]
         if quality_log:
             print(f"[QualityGate] Extracted queries ({len(queries)}): {queries}")
-            print("[QualityGate] STEP 2/3 - Run web search")
+            print("[QualityGate] STEP 2/3 - Run web search + page rerank + pre-crawl gate")
+        log_step(
+            "QUERY",
+            "OUTPUT",
+            {
+                "raw_keyword_objects": data,
+                "queries": queries,
+                "query_count": len(queries),
+            },
+            params,
+        )
 
         web_sources, rag_sources = await self.pipeline.retrieve(params, queries)
         if quality_log:
             print(
-                f"[QualityGate] Raw retrieve -> web_sources={len(web_sources)}, "
+                f"[ChunkGate] Raw retrieve -> web_sources={len(web_sources)}, "
                 f"rag_sources={len(rag_sources)}"
             )
         _debug_source_list("WEB_RAW_SOURCES", web_sources)
         _debug_source_list("RAG_RAW_CHUNKS", rag_sources)
 
-        if not enable_quality_gate:
+        if not enable_chunk_gate:
             if quality_log:
-                print("[QualityGate] Disabled -> run SourceSafetyGate only")
+                print("[ChunkGate] Disabled -> run SourceSafetyGate only")
+            log_step(
+                "CHUNK_GATE",
+                "INPUT",
+                {
+                    "enabled": False,
+                    "question": question,
+                    "web_source_count": len(web_sources),
+                    "rag_source_count": len(rag_sources),
+                    "web_sources": compact_sources(web_sources, "web", limit=10),
+                    "rag_sources": compact_sources(rag_sources, "rag", limit=10),
+                },
+                params,
+            )
+            log_step(
+                "CHUNK_GATE",
+                "OUTPUT",
+                {
+                    "enabled": False,
+                    "reason": "chunk_gate_disabled",
+                    "source_safety_filter": params.get("source_safety_filter", True),
+                    "web_sources": len(web_sources),
+                    "rag_sources": len(rag_sources),
+                },
+                params,
+            )
             if params.get("source_safety_filter", True):
                 return self._source_safety_filter(question, web_sources, rag_sources, params)
             return web_sources, rag_sources
 
-        return self._quality_audit(question, web_sources, rag_sources, params)
+        return self._chunk_gate(question, web_sources, rag_sources, params)
     
 class RouterRetriever:
     def __init__(self, llm_router: RouterModelProtocol, web_retriever: WebRetriever, local_retriever: LocalRetriever) -> None:
@@ -866,6 +1078,21 @@ class RouterRetriever:
             }),
             limit=0,
         )
+        log_step(
+            "SOURCE_ROUTER",
+            "INPUT",
+            {
+                "question": question,
+                "use_localdb": use_localdb,
+                "use_websearch": use_websearch,
+                "auto_source": params.get("auto_source"),
+                "source_mode": params.get("source_mode"),
+                "max_query": params.get("max_query"),
+                "k_docs": params.get("k_docs"),
+                "k_pages": params.get("k_pages"),
+            },
+            params,
+        )
         if use_websearch:
             self._auto_apply_time_filter(question, params)
         if use_websearch and use_localdb:
@@ -877,10 +1104,34 @@ class RouterRetriever:
                     _debug_json({"mode": "hybrid" if hybrid_retrieval else "local_db", "reason": "router returned local queries", "local_queries": local_queries}),
                     limit=0,
                 )
-                local_web, local_rag = self.local_retriever.retrieve(local_queries)
+                local_web, local_rag = self.local_retriever.retrieve(local_queries, params)
                 if hybrid_retrieval:
                     web_web, web_rag = await self.web_retriever.retrive(question, params)
+                    log_step(
+                        "SOURCE_ROUTER",
+                        "OUTPUT",
+                        {
+                            "mode": "hybrid",
+                            "reason": "router returned local queries and hybrid_retrieval=True",
+                            "local_queries": local_queries,
+                            "web_sources": len(local_web) + len(web_web),
+                            "rag_sources": len(local_rag) + len(web_rag),
+                        },
+                        params,
+                    )
                     return local_web + web_web, local_rag + web_rag
+                log_step(
+                    "SOURCE_ROUTER",
+                    "OUTPUT",
+                    {
+                        "mode": "local_db",
+                        "reason": "router returned local queries",
+                        "local_queries": local_queries,
+                        "web_sources": len(local_web),
+                        "rag_sources": len(local_rag),
+                    },
+                    params,
+                )
                 return local_web, local_rag
             else:
                 _debug_block(
@@ -888,7 +1139,19 @@ class RouterRetriever:
                     _debug_json({"mode": "web", "reason": "router returned no local queries"}),
                     limit=0,
                 )
-                return await self.web_retriever.retrive(question, params)
+                web, rag = await self.web_retriever.retrive(question, params)
+                log_step(
+                    "SOURCE_ROUTER",
+                    "OUTPUT",
+                    {
+                        "mode": "web",
+                        "reason": "router returned no local queries",
+                        "web_sources": len(web),
+                        "rag_sources": len(rag),
+                    },
+                    params,
+                )
+                return web, rag
         elif use_localdb:
             local_queries = await self.router.route(question, params)
             if len(local_queries) > 0:
@@ -897,12 +1160,36 @@ class RouterRetriever:
                     _debug_json({"mode": "local_db", "reason": "local only, router returned queries", "local_queries": local_queries}),
                     limit=0,
                 )
-                return self.local_retriever.retrieve(local_queries)
+                web, rag = self.local_retriever.retrieve(local_queries, params)
+                log_step(
+                    "SOURCE_ROUTER",
+                    "OUTPUT",
+                    {
+                        "mode": "local_db",
+                        "reason": "local only, router returned queries",
+                        "local_queries": local_queries,
+                        "web_sources": len(web),
+                        "rag_sources": len(rag),
+                    },
+                    params,
+                )
+                return web, rag
             else:
                 _debug_block(
                     "ROUTER_SOURCE_DECISION",
                     _debug_json({"mode": "none", "reason": "local only, router returned no local queries"}),
                     limit=0,
+                )
+                log_step(
+                    "SOURCE_ROUTER",
+                    "OUTPUT",
+                    {
+                        "mode": "none",
+                        "reason": "local only, router returned no local queries",
+                        "web_sources": 0,
+                        "rag_sources": 0,
+                    },
+                    params,
                 )
                 return [], []
         elif use_websearch:
@@ -911,12 +1198,35 @@ class RouterRetriever:
                 _debug_json({"mode": "web", "reason": "web only"}),
                 limit=0,
             )
-            return await self.web_retriever.retrive(question, params)
+            web, rag = await self.web_retriever.retrive(question, params)
+            log_step(
+                "SOURCE_ROUTER",
+                "OUTPUT",
+                {
+                    "mode": "web",
+                    "reason": "web only",
+                    "web_sources": len(web),
+                    "rag_sources": len(rag),
+                },
+                params,
+            )
+            return web, rag
         else:
             _debug_block(
                 "ROUTER_SOURCE_DECISION",
                 _debug_json({"mode": "none", "reason": "both local and web disabled"}),
                 limit=0,
+            )
+            log_step(
+                "SOURCE_ROUTER",
+                "OUTPUT",
+                {
+                    "mode": "none",
+                    "reason": "both local and web disabled",
+                    "web_sources": 0,
+                    "rag_sources": 0,
+                },
+                params,
             )
             return [], []
         
@@ -1457,6 +1767,17 @@ class CustomQA:
         await self.retriever.web_retriever.start()
     async def inference(self, prompt: str, request: WorkerChatRequest) -> AsyncGenerator[str, None]:
         text = ""
+        log_step(
+            "FINAL_READER",
+            "INPUT",
+            {
+                "prompt_chars": len(prompt or ""),
+                "prompt_preview": trace_preview(prompt, 1200),
+                "model_id": request["params"].get("model_id"),
+                "temperature": request["params"].get("temperature"),
+            },
+            request["params"],
+        )
         async for chunk in await self.llm_call(
             call_type=CallType.READER, 
             instruction=READER_UNTRAINED_INSTRUCTION+READER_UNTRAINED_PREFIX, 
@@ -1465,12 +1786,32 @@ class CustomQA:
         ):
             text += chunk
             yield chunk
+        log_step(
+            "FINAL_READER",
+            "OUTPUT",
+            {
+                "answer_chars": len(text),
+                "answer_preview": trace_preview(text, 1600),
+            },
+            request["params"],
+        )
     async def pre_inference(
         self,
         question: str,
         stream_id: str,
         params: GenerationParams
     ) -> tuple[str, ModelPreOutput]:
+        reset_trace()
+        log_step(
+            "REQUEST",
+            "INPUT",
+            {
+                "stream_id": stream_id,
+                "question": question,
+                "params": dict(params),
+            },
+            params,
+        )
         _debug_block(
             "REQUEST_START",
             _debug_json({
@@ -1518,12 +1859,36 @@ class CustomQA:
             )
         else:
             _debug_block("MULTI_HOP_TRACE", "trace=None (single-hop fallback or disabled)")
+        log_step(
+            "FINAL_AGGREGATE",
+            "INPUT",
+            {
+                "question": question,
+                "web_sources_before_table_rescue": len(web_sources),
+                "rag_sources_before_table_rescue": len(rag_sources),
+                "table_rescue_max_sources": int(params.get("reader_table_rescue_max_sources", 2)),
+                "table_rescue_max_chars": int(params.get("reader_table_rescue_max_chars", 6000)),
+            },
+            params,
+        )
         rag_sources = _augment_rag_with_web_table_evidence(
             question,
             web_sources,
             rag_sources,
             max_sources=int(params.get("reader_table_rescue_max_sources", 2)),
             max_chars=int(params.get("reader_table_rescue_max_chars", 6000)),
+        )
+        log_step(
+            "FINAL_AGGREGATE",
+            "OUTPUT",
+            {
+                "question": question,
+                "web_sources": len(web_sources),
+                "rag_sources": len(rag_sources),
+                "web_preview": compact_sources(web_sources, "web", limit=10),
+                "rag_preview": compact_sources(rag_sources, "rag", limit=10),
+            },
+            params,
         )
         _debug_source_list("FINAL_WEB_SOURCES", web_sources)
         _debug_source_list("FINAL_RAG_CHUNKS", rag_sources)
@@ -1543,6 +1908,16 @@ class CustomQA:
 
         # Sufficiency Gate: đánh dấu low_confidence khi bằng chứng chưa đủ.
         try:
+            log_step(
+                "SUFFICIENCY_GATE",
+                "INPUT",
+                {
+                    "question": question,
+                    "chunk_count": len(rag_sources),
+                    "chunks": compact_sources(rag_sources, "rag", limit=10),
+                },
+                params,
+            )
             suff = self.sufficiency.check(question, rag_sources)
             params["sufficiency_score"] = suff.score
             params["low_confidence"] = not suff.sufficient
@@ -1550,10 +1925,40 @@ class CustomQA:
                 f"[SufficiencyGate] score={suff.score:.4f} sufficient={suff.sufficient} "
                 f"used={suff.used_chunks} reason={suff.reason}"
             )
+            log_step(
+                "SUFFICIENCY_GATE",
+                "OUTPUT",
+                {
+                    "score": suff.score,
+                    "sufficient": suff.sufficient,
+                    "used_chunks": suff.used_chunks,
+                    "reason": suff.reason,
+                    "low_confidence": params["low_confidence"],
+                },
+                params,
+            )
         except Exception as e:
             print(f"[SufficiencyGate] skipped due to error: {e}")
             params["low_confidence"] = False
+            log_step(
+                "SUFFICIENCY_GATE",
+                "OUTPUT",
+                {
+                    "error": str(e),
+                    "low_confidence": params["low_confidence"],
+                },
+                params,
+            )
 
+        log_step(
+            "RAG_CONTEXT",
+            "INPUT",
+            {
+                "chunk_count": len(rag_sources),
+                "chunks": compact_sources(rag_sources, "rag", limit=10),
+            },
+            params,
+        )
         context = SourceFormat()(rag_sources)
         prompt = READER_TEMPLATE.format(context=context, question=question)
         if params.get("low_confidence"):
@@ -1563,6 +1968,17 @@ class CustomQA:
                 "thay vì suy đoán.\n\n" + prompt
             )
         print("\n" + "=" * 80)
+        log_step(
+            "RAG_CONTEXT",
+            "OUTPUT",
+            {
+                "context_chars": len(context),
+                "context_preview": trace_preview(context, 1600),
+                "prompt_chars": len(prompt),
+                "low_confidence": params.get("low_confidence"),
+            },
+            params,
+        )
         print("[RAG CONTEXT] Formatted chunks sent to reader:")
         print("-" * 80)
         print(context if context.strip() else "[Empty context]")
@@ -1583,6 +1999,18 @@ class CustomQA:
             },
             "result_url": stream_id,
         }
+        log_step(
+            "REQUEST",
+            "OUTPUT",
+            {
+                "stream_id": stream_id,
+                "web_sources": len(web_sources),
+                "rag_sources": len(rag_sources),
+                "prompt_chars": len(prompt),
+                "low_confidence": params.get("low_confidence"),
+            },
+            params,
+        )
         return prompt, pre_output
     
 async def main():
@@ -1639,10 +2067,16 @@ async def main():
 
             normalize_source_params()
             params.setdefault("enable_quality_gate", False)
+            params.setdefault("enable_pre_crawl_quality_gate", params["enable_quality_gate"])
+            params.setdefault("enable_chunk_gate", params["enable_quality_gate"])
             params.setdefault("quality_log", params["enable_quality_gate"])
+            params.setdefault("test_trace", params["quality_log"])
             params.setdefault("quality_min_score", 0.58)
             params.setdefault("quality_min_relevance", 0.25)
             params.setdefault("quality_min_trust", 0.50)
+            params.setdefault("quality_semantic_weight", 0.65)
+            params.setdefault("pre_crawl_quality_min_score", params["quality_min_score"])
+            params.setdefault("chunk_gate_min_score", params["quality_min_score"])
             params.setdefault("quality_strict_mode", True)
             params.setdefault("quality_max_docs", params.get("k_pages", 3))
             params.setdefault("source_safety_filter", True)
@@ -1665,6 +2099,8 @@ async def main():
             print(params)
             print(
                 f"[QualityGate] enable_quality_gate={params['enable_quality_gate']} | "
+                f"pre_crawl={params['enable_pre_crawl_quality_gate']} | "
+                f"chunk_gate={params['enable_chunk_gate']} | "
                 f"quality_log={params['quality_log']} | "
                 f"min_relevance={params['quality_min_relevance']} | "
                 f"min_trust={params['quality_min_trust']}"
