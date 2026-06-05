@@ -240,7 +240,7 @@ def rewrite_with_resolved(
     nhiễu cho keyword extractor và router LLM. Reasoner sẽ tự đọc evidence_blocks
     đầy đủ ở bước reasoning.
     """
-    if not sq.depends_on:
+    if not sq.depends_on or sq.resolver == "reasoning":
         return sq.text
     facts: list[str] = []
     for d in sq.depends_on:
@@ -260,6 +260,43 @@ def rewrite_with_resolved(
     else:
         clause = f"(biết rằng: {'; '.join(facts)})"
     return f"{sq.text} {clause}"
+
+
+def _split_bridge_entries(fact: str) -> list[str]:
+    entries = re.split(r"\s*(?:;|\n|\r|\u2022)\s*", fact or "")
+    return [entry.strip(" -\t") for entry in entries if len(entry.strip(" -\t")) >= 4]
+
+
+def enrich_with_list_dependencies(
+    text: str,
+    sq: SubQuestion,
+    resolved: dict[int, str],
+    dep_evidence_types: Optional[dict[int, str]],
+    max_chars: int = 600,
+) -> str:
+    """Attach a compact multi-item candidate list to downstream retrieval."""
+    if not sq.depends_on or (sq.evidence_type or "").lower() not in {"numeric", "list", "comparison"}:
+        return text
+
+    bridge_entries: list[str] = []
+    for dep_id in sq.depends_on:
+        if dep_evidence_types is not None:
+            dep_type = (dep_evidence_types.get(dep_id) or "").lower()
+            if dep_type != "list":
+                continue
+        entries = _split_bridge_entries(resolved.get(dep_id, ""))
+        if len(entries) >= 2:
+            bridge_entries.extend(entries[:12])
+
+    if not bridge_entries:
+        return text
+
+    suffix = "; ".join(bridge_entries)
+    if len(suffix) > max_chars:
+        suffix = suffix[:max_chars].rsplit(";", 1)[0].strip()
+    if not suffix:
+        return text
+    return f"{text} (trong danh sach: {suffix})"
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -508,6 +545,416 @@ def _select_relevant_text(question: str, text: str, max_chars: int) -> str:
     return selected[:max_chars]
 
 
+def _table_query(question: str) -> bool:
+    q_norm = _normalize_for_match(question)
+    terms = [
+        "diem chuan", "diem trung tuyen", "diem xet tuyen", "diem san",
+        "hoc phi", "muc thu", "tin chi", "danh sach", "so sanh", "xep hang", "loc",
+    ]
+    return any(_term_in_text(term, q_norm) for term in terms)
+
+
+def _is_table_like_text(text: str) -> bool:
+    return "[BANG]" in (text or "") or (text or "").count("|") >= 6
+
+
+def _rescue_web_table_chunks(question: str, web_sources: list[WebSource], rag_sources: list[RagSource]) -> list[RagSource]:
+    if not web_sources or not _table_query(question):
+        return rag_sources
+    existing_urls = {r.get("url", "") for r in rag_sources if _is_table_like_text(r.get("text", "") or "")}
+    additions: list[RagSource] = []
+    for idx, src in enumerate(web_sources[:5], 1):
+        text = src.get("text", "") or ""
+        url = src.get("url", "") or ""
+        if not url or url in existing_urls or not _is_table_like_text(text):
+            continue
+        selected = _select_relevant_text(question, text, 6000)
+        if not selected.strip() or not _is_table_like_text(selected):
+            continue
+        additions.append({  # type: ignore[typeddict-item]
+            "query": question,
+            "url": url,
+            "title": src.get("title", ""),
+            "text": selected,
+            "chunk_index": -200000 - idx,
+        })
+        if len(additions) >= 2:
+            break
+    if additions:
+        print(f"[MultiHopTableRescue] SQ table chunks added: {len(additions)}")
+    return additions + rag_sources
+
+
+def _contains_any(text_norm: str, terms: list[str]) -> bool:
+    return any(_term_in_text(term, text_norm) for term in terms)
+
+
+def _negative_or_empty_fact(text: str) -> bool:
+    norm = _normalize_for_match(text)
+    if not norm:
+        return True
+    negative_terms = [
+        "khong co thong tin", "khong tim thay", "chua tim thay",
+        "khong du thong tin", "khong du du lieu", "khong duoc cung cap",
+        "chua duoc cung cap", "khong duoc neu", "chua duoc neu",
+        "khong co thong tin cu the", "unknown", "none", "n/a",
+    ]
+    return any(term in norm for term in negative_terms)
+
+
+def _strict_filter_query(question: str) -> bool:
+    q_norm = _normalize_for_match(question)
+    filter_terms = ["danh sach", "loc", "xep hang", "top", "cac truong", "nhung truong"]
+    metric_terms = ["diem chuan", "diem trung tuyen", "diem xet tuyen", "hoc phi"]
+    return _contains_any(q_norm, filter_terms) and sum(1 for term in metric_terms if term in q_norm) >= 2
+
+
+def _reasoning_filter_answer_valid(question: str, answer: str) -> tuple[bool, str]:
+    if not _strict_filter_query(question):
+        return True, "not_strict_filter"
+    a_norm = _normalize_for_match(answer)
+    q_norm = _normalize_for_match(question)
+    if _negative_or_empty_fact(answer):
+        return False, "negative_or_empty_answer"
+    if any(term in a_norm for term in ["unknown", "khong co thong tin", "khong duoc cung cap", "chua tim thay"]):
+        return False, "contains_unknown_or_missing_slot"
+    if "diem" in q_norm or "diem chuan" in q_norm:
+        if not re.search(r"\b(?:1[5-9]|2[0-9]|30)(?:[,.]\d{1,2})?\b", a_norm):
+            return False, "missing_score_value"
+    if "hoc phi" in q_norm:
+        has_money = bool(
+            re.search(r"\d[\d.,]*\s*(?:trieu|dong|vnd|vnđ)", a_norm)
+            or "dong/tin chi" in a_norm
+            or "dong/thang" in a_norm
+            or "dong/nam" in a_norm
+        )
+        if not has_money:
+            return False, "missing_tuition_money"
+    return True, "ok"
+
+
+def _normalize_plan_for_strict_list(question: str, plan: DecomposerPlan) -> DecomposerPlan:
+    """Make metric sub-queries over many schools return multi-entry facts."""
+    if not _strict_filter_query(question):
+        return plan
+    q_norm = _normalize_for_match(question)
+    normalized: list[SubQuestion] = []
+    for sq in plan.sub_questions:
+        sq_norm = _normalize_for_match(sq.text)
+        resolver = sq.resolver
+        evidence_type = sq.evidence_type
+        is_metric = _contains_any(sq_norm, ["diem chuan", "diem trung tuyen", "diem xet tuyen", "hoc phi"])
+        multi_subject = _contains_any(sq_norm + " " + q_norm, ["cac truong", "nhung truong", "danh sach", "o ha noi"])
+        if sq.resolver != "reasoning" and is_metric and multi_subject:
+            evidence_type = "list"
+            if resolver == "local_db":
+                resolver = "hybrid"
+        normalized.append(
+            SubQuestion(
+                id=sq.id,
+                text=sq.text,
+                depends_on=list(sq.depends_on),
+                resolver=resolver,
+                evidence_type=evidence_type,
+            )
+        )
+    return DecomposerPlan(sub_questions=normalized)
+
+
+_SCORE_TERMS = [
+    "diem chuan", "diem trung tuyen", "diem xet tuyen", "trung tuyen",
+]
+_TUITION_TERMS = [
+    "hoc phi", "muc thu", "dinh muc hoc phi", "don gia", "tin chi",
+]
+_UNDERGRAD_TERMS = [
+    "dai hoc chinh quy", "bac dai hoc", "trinh do dai hoc", "sinh vien dai hoc",
+    "cu nhan", "ky su", "tuyen sinh dai hoc",
+]
+_GRAD_TERMS = [
+    "thac si", "cao hoc", "sau dai hoc", "nghien cuu sinh", "tien si",
+    "dao tao thac si", "dao tao tien si", "master", "graduate",
+]
+_ADMISSION_PLAN_TERMS = [
+    "de an tuyen sinh", "thong tin tuyen sinh", "phuong an tuyen sinh",
+    "chi tieu tuyen sinh", "nguong dau vao", "du kien",
+]
+
+
+def _subquery_metric_flags(question: str) -> tuple[bool, bool, bool]:
+    q_norm = _normalize_for_match(question)
+    score_query = _contains_any(q_norm, _SCORE_TERMS + ["diem san"])
+    tuition_query = _contains_any(q_norm, _TUITION_TERMS)
+    admission_query = score_query or _contains_any(q_norm, [
+        "tuyen sinh", "ma nganh", "to hop", "khoi a00", "a00",
+    ])
+    return score_query, tuition_query, admission_query
+
+
+def _expand_school_aliases_for_search(query: str) -> list[str]:
+    q_norm = _normalize_for_match(query)
+    additions: list[str] = []
+    if (
+        re.search(r"\buet\b", q_norm)
+        or ("dai hoc cong nghe" in q_norm and ("dhqghn" in q_norm or "dai hoc quoc gia ha noi" in q_norm))
+    ):
+        if "truong dai hoc cong nghe" not in q_norm or "dhqghn" not in q_norm:
+            additions.append("Trường Đại học Công nghệ ĐHQGHN UET")
+    if re.search(r"\bptit\b", q_norm) or "buu chinh vien thong" in q_norm:
+        if "hoc vien cong nghe buu chinh vien thong" not in q_norm:
+            additions.append("Học viện Công nghệ Bưu chính Viễn thông PTIT")
+    return additions
+
+
+def _school_aliases_for_subquery(query: str, original_question: str) -> list[str]:
+    query_additions = _expand_school_aliases_for_search(query)
+    if query_additions:
+        return query_additions
+    original_additions = _expand_school_aliases_for_search(original_question)
+    # If the original question mentions multiple schools, do not append all of
+    # them to an underspecified sub-query. That would contaminate UET/PTIT hops.
+    if len(original_additions) == 1:
+        return original_additions
+    return []
+
+
+def _refine_subquery_for_retrieval(
+    query: str,
+    original_question: str,
+    sq: SubQuestion,
+) -> str:
+    """Make a multi-hop atomic query closer to a strong single-hop query."""
+    combined = f"{original_question} {query}"
+    q_norm = _normalize_for_match(query)
+    c_norm = _normalize_for_match(combined)
+    evidence_type = (sq.evidence_type or "").lower()
+    query_score, query_tuition, query_admission = _subquery_metric_flags(query)
+    score_query, tuition_query, admission_query = query_score, query_tuition, query_admission
+
+    # Do not inherit every metric from the original question into a broad
+    # candidate/list sub-query. For example, a root question may ask for
+    # "schools with score > 25 and tuition < 50M", but the candidate SQ should
+    # stay a clean candidate/score retrieval query instead of becoming
+    # "list schools + score + tuition + A00", which poisons web search.
+    inherit_metric_from_original = evidence_type != "list"
+    if not (score_query or tuition_query) and inherit_metric_from_original:
+        score_query, tuition_query, admission_query = _subquery_metric_flags(combined)
+
+    additions: list[str] = []
+    additions.extend(_school_aliases_for_subquery(query, original_question))
+
+    if score_query:
+        if "diem chuan trung tuyen" not in q_norm and "diem trung tuyen" not in q_norm:
+            additions.append("điểm chuẩn trúng tuyển đại học chính quy")
+        if "dai hoc chinh quy" not in q_norm:
+            additions.append("đại học chính quy")
+
+    if score_query:
+        asks_explicit_method = _contains_any(c_norm, [
+            "hoc ba", "ccqt", "ket hop", "dgnl", "danh gia nang luc",
+            "dgtd", "danh gia tu duy", "tsa", "hsa", "aptitude",
+        ])
+        if ("a00" in c_norm or "khoi a" in c_norm) and not asks_explicit_method:
+            additions.append("diem thi tot nghiep THPT")
+            additions.append("phuong thuc xet tuyen THPT")
+
+    if tuition_query:
+        if "dinh muc hoc phi" not in q_norm and "muc thu hoc phi" not in q_norm:
+            additions.append("định mức học phí đại học chính quy")
+        if "dong/tin chi" not in q_norm and "dong/thang" not in q_norm:
+            additions.append("đồng/tín chỉ đồng/tháng")
+        year_match = re.search(r"\b(20\d{2})\b", c_norm)
+        if year_match and "nam hoc" not in q_norm:
+            try:
+                year = int(year_match.group(1))
+                additions.append(f"năm học {year}-{year + 1}")
+            except Exception:
+                pass
+
+    if admission_query and (score_query or query_admission) and "a00" in c_norm and "a00" not in q_norm:
+        additions.append("A00")
+
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for item in additions:
+        key = _normalize_for_match(item)
+        if key and key not in seen and key not in q_norm:
+            seen.add(key)
+            deduped.append(item)
+    if not deduped:
+        return query
+    return " ".join([query.strip(), *deduped]).strip()
+
+
+def _source_noise_reason(question: str, title: str, url: str, text: str) -> str:
+    q_norm = _normalize_for_match(question)
+    title_url_norm = _normalize_for_match(f"{title} {url}")
+    head_norm = _normalize_for_match(f"{title} {url}\n{text[:2500]}")
+    score_query, tuition_query, admission_query = _subquery_metric_flags(question)
+    asks_grad = _contains_any(q_norm, _GRAD_TERMS)
+    if admission_query or tuition_query or score_query:
+        work_abroad_terms = [
+            "eps", "xuat canh", "nguoi lao dong", "lao dong ngoai nuoc",
+            "han quoc", "visa", "ky quy", "giao duc dinh huong",
+            "dao tao dinh huong", "phai cu", "hop dong lao dong",
+        ]
+        if _contains_any(head_norm, work_abroad_terms):
+            return "work_abroad_training_source_for_admission_query"
+
+    if "ha noi" in q_norm:
+        outside_hanoi_terms = [
+            "dai hoc hoa sen", "hoasen", "tp ho chi minh", "thanh pho ho chi minh",
+            "dai hoc da nang", "viet han", "da nang", "tp.hcm", "tphcm",
+        ]
+        if _contains_any(head_norm, outside_hanoi_terms):
+            return "outside_hanoi_source_for_hanoi_query"
+
+    if (admission_query or tuition_query) and not asks_grad:
+        title_grad = _contains_any(title_url_norm, _GRAD_TERMS)
+        head_grad = _contains_any(head_norm, _GRAD_TERMS)
+        head_undergrad = _contains_any(head_norm, _UNDERGRAD_TERMS)
+        if title_grad or (head_grad and not head_undergrad):
+            return "graduate_source_for_undergraduate_subquery"
+
+    if score_query:
+        has_score_signal = _contains_any(head_norm, _SCORE_TERMS)
+        score_header_signal = _contains_any(head_norm, [
+            "diem chuan", "diem trung tuyen", "diem xet tuyen", "diem tt",
+        ])
+        has_score_amount = bool(re.search(r"\b(?:1[5-9]|2[0-9]|30)(?:[,.]\d{1,2})?\b", head_norm))
+        has_score_table = _is_table_like_text(text) and score_header_signal and has_score_amount
+        plan_like = _contains_any(head_norm, _ADMISSION_PLAN_TERMS)
+        if plan_like and not has_score_table:
+            return "admission_plan_without_score_result"
+        if _term_in_text("diem san", head_norm) and not has_score_signal:
+            return "floor_score_without_admission_score"
+        if not has_score_signal and not has_score_table:
+            return "non_score_source_for_score_query"
+        asks_explicit_method = _contains_any(q_norm, [
+            "hoc ba", "ccqt", "ket hop", "dgnl", "danh gia nang luc",
+            "dgtd", "danh gia tu duy", "tsa", "hsa", "aptitude",
+        ])
+        plain_a00_query = ("a00" in q_norm or "khoi a" in q_norm) and not asks_explicit_method
+        non_thpt_method = _contains_any(head_norm, [
+            "hoc ba", "ccqt", "ket hop", "xet tuyen ket hop",
+            "dgnl", "danh gia nang luc", "dgtd", "danh gia tu duy",
+            "tsa", "hsa", "aptitude",
+        ])
+        thpt_score_signal = _contains_any(head_norm, [
+            "diem thi thpt", "thi tot nghiep thpt", "tot nghiep thpt",
+            "xet tuyen thpt", "phuong thuc thpt",
+        ])
+        if plain_a00_query and non_thpt_method and not thpt_score_signal:
+            return "non_thpt_score_method_for_plain_a00_query"
+        if len((text or "").strip()) < 220 and not has_score_table:
+            return "too_short_for_score_fact"
+
+    if tuition_query:
+        has_tuition_signal = _contains_any(head_norm, _TUITION_TERMS)
+        has_amount_signal = bool(re.search(r"\d[\d.,]*\s*(dong|trieu|tin chi|thang|nam)", head_norm))
+        score_only = _contains_any(head_norm, _SCORE_TERMS) and not has_tuition_signal
+        if score_only:
+            return "score_source_for_tuition_query"
+        low_trust_tuition_domains = [
+            "fptshop.com.vn",
+            "dienthoaivui.com.vn",
+            "hotcourses.vn",
+            "idp.com",
+            "reviewedu.net",
+            "kenhtuyensinh",
+        ]
+        official_tuition_domains = [
+            "uet.vnu.edu.vn",
+            "tuyensinh.uet.vnu.edu.vn",
+            "ptit.edu.vn",
+            "giaovu.ptit.edu.vn",
+            "tuyensinh.ptit.edu.vn",
+            ".edu.vn",
+        ]
+        if any(domain in title_url_norm for domain in low_trust_tuition_domains) and not any(
+            domain in title_url_norm for domain in official_tuition_domains
+        ):
+            return "low_trust_tuition_source"
+        asks_policy = _contains_any(q_norm, ["mien giam", "hoc bong", "ho tro", "tro cap"])
+        waiver_hits = sum(1 for term in [
+            "mien giam", "hoc bong", "ho tro chi phi", "chinh sach phat trien",
+            "nguoi hoc tai nang", "tro cap", "cap bu hoc phi",
+        ] if term in head_norm)
+        schedule_signal = _contains_any(head_norm, [
+            "muc thu hoc phi", "dinh muc hoc phi", "thong bao hoc phi",
+            "quy dinh hoc phi", "don gia hoc phi", "hoc phi nam hoc",
+            "dong/tin chi", "dong / tin chi",
+        ])
+        if waiver_hits and not asks_policy and not schedule_signal:
+            return "waiver_support_source_for_tuition_query"
+        scholarship_only = _contains_any(head_norm, ["hoc bong", "mien giam"]) and not has_amount_signal
+        if scholarship_only and not has_tuition_signal:
+            return "scholarship_without_tuition_amount"
+        if len((text or "").strip()) < 220 and not has_amount_signal:
+            return "too_short_for_tuition_fact"
+
+    return ""
+
+
+def _filter_subquery_noise(
+    question: str,
+    web_sources: list[WebSource],
+    rag_sources: list[RagSource],
+) -> tuple[list[WebSource], list[RagSource], dict[str, int]]:
+    stats: dict[str, int] = {}
+
+    filtered_web: list[WebSource] = []
+    dropped_urls: set[str] = set()
+    for src in web_sources:
+        reason = _source_noise_reason(
+            question,
+            src.get("title", "") or "",
+            src.get("url", "") or "",
+            src.get("text", "") or "",
+        )
+        if reason:
+            stats[reason] = stats.get(reason, 0) + 1
+            if src.get("url"):
+                dropped_urls.add(src.get("url", "") or "")
+            continue
+        filtered_web.append(src)
+
+    filtered_rag: list[RagSource] = []
+    for src in rag_sources:
+        url = src.get("url", "") or ""
+        reason = _source_noise_reason(
+            question,
+            src.get("title", "") or "",
+            url,
+            src.get("text", "") or "",
+        )
+        if reason or (url and url in dropped_urls):
+            reason = reason or "parent_web_source_dropped"
+            stats[reason] = stats.get(reason, 0) + 1
+            continue
+        filtered_rag.append(src)
+
+    return filtered_web, filtered_rag, stats
+
+
+def _has_metric_evidence(question: str, rag_sources: list[RagSource]) -> bool:
+    if not rag_sources:
+        return False
+    text = "\n".join((src.get("text", "") or "")[:2500] for src in rag_sources[:5])
+    if not re.search(r"\d", text or ""):
+        return False
+    q_norm = _normalize_for_match(question)
+    t_norm = _normalize_for_match(text)
+    score_query, tuition_query, _ = _subquery_metric_flags(question)
+    if score_query:
+        return _contains_any(t_norm, _SCORE_TERMS) and (_is_table_like_text(text) or "diem chuan" in t_norm)
+    if tuition_query:
+        return _contains_any(t_norm, _TUITION_TERMS) and bool(
+            re.search(r"\d[\d.,]*\s*(dong|trieu|tin chi|thang|nam)", t_norm)
+        )
+    return bool(q_norm and re.search(r"\d", t_norm))
+
+
 # ──────────────────────────────────────────────────────────────────
 # MultiHopOrchestrator
 # ──────────────────────────────────────────────────────────────────
@@ -698,6 +1145,7 @@ class MultiHopOrchestrator:
             },
             params,
         )
+        plan = _normalize_plan_for_strict_list(question, plan)
         log_step(
             "MULTIHOP_PLAN",
             "INPUT",
@@ -864,6 +1312,18 @@ class MultiHopOrchestrator:
             dep_evidence_types=self._dep_evidence_types,
             skip_types=tuple(self.config.skip_bridge_entity_for_types),
         )
+        rewritten = enrich_with_list_dependencies(
+            rewritten,
+            sq,
+            resolved,
+            self._dep_evidence_types,
+        )
+        refined = rewritten
+        if sq.resolver != "reasoning":
+            refined = _refine_subquery_for_retrieval(rewritten, self._original_question, sq)
+        if refined != rewritten:
+            self.logger.log(f"  SQ#{sq.id} retrieval-query refined: {refined}")
+            rewritten = refined
 
         # ── Reasoning sub-q ──
         if rewritten != sq.text:
@@ -956,7 +1416,13 @@ class MultiHopOrchestrator:
                 f"  SQ#{sq.id} local_db empty → fallback web"
             )
             fb_params = self._scoped_params(
-                SubQuestion(id=sq.id, text=sq.text, depends_on=sq.depends_on, resolver="web"),
+                SubQuestion(
+                    id=sq.id,
+                    text=sq.text,
+                    depends_on=sq.depends_on,
+                    resolver="web",
+                    evidence_type=sq.evidence_type,
+                ),
                 params,
             )
             log_step(
@@ -987,10 +1453,35 @@ class MultiHopOrchestrator:
                 f"  SQ#{sq.id} fallback-result: web={len(web)} rag={len(rag)} "
                 f"localdb={bool(fb_params.get('use_localdb'))} websearch={bool(fb_params.get('use_websearch'))}"
             )
+            subq_params = fb_params
 
         # ── Major-keyword filter ──
         # Loại các chunks không đề cập đến ngành/category được hỏi (ví dụ
         # khi router LLM trả về tất cả school_id, có nhiều trường không có CNTT).
+        rag = _rescue_web_table_chunks(rewritten, web, rag)
+        web_before, rag_before = len(web), len(rag)
+        web, rag, noise_stats = _filter_subquery_noise(rewritten, web, rag)
+        if noise_stats:
+            self.logger.log(
+                f"  SQ#{sq.id} source-noise-filter: web {web_before}->{len(web)}, "
+                f"rag {rag_before}->{len(rag)}, reasons={noise_stats}"
+            )
+            log_step(
+                "SUBQUERY_SOURCE_FILTER",
+                "OUTPUT",
+                {
+                    "id": sq.id,
+                    "rewritten_text": rewritten,
+                    "before": {"web_sources": web_before, "rag_sources": rag_before},
+                    "after": {"web_sources": len(web), "rag_sources": len(rag)},
+                    "drop_reasons": noise_stats,
+                    "web_preview": compact_sources(web, "web", limit=5),
+                    "rag_preview": compact_sources(rag, "rag", limit=5),
+                },
+                subq_params,
+                scope=f"SQ#{sq.id}",
+            )
+
         if self.config.enable_major_keyword_filter and rag:
             keywords = _extract_major_keywords(sq.text)
             if keywords:
@@ -1012,6 +1503,9 @@ class MultiHopOrchestrator:
                 fact, confidence = await self._call_fact_extractor(
                     rewritten, rag, params, sq.evidence_type
                 )
+                if _negative_or_empty_fact(fact):
+                    fact = ""
+                    confidence = 0.0
                 if confidence < self.config.fact_confidence_threshold:
                     fact = ""  # không đủ tin cậy để dùng ở hop sau
             except Exception as e:
@@ -1076,12 +1570,22 @@ class MultiHopOrchestrator:
         # 1) Build evidence blocks từ deps: gồm fact + các chunks rag thật của dep
         evidence_blocks: list[str] = []
         dep_facts: list[tuple[int, str]] = []
+        missing_required_deps: list[int] = []
         max_chunks = max(1, int(self.config.reasoning_max_evidence_chunks_per_dep))
         max_chars = max(200, int(self.config.reasoning_max_chars_per_chunk))
 
         for d in sq.depends_on:
             dep_res = self._per_sq_view.get(d) if hasattr(self, "_per_sq_view") else None
             dep_fact = resolved.get(d, "") or ""
+            if _negative_or_empty_fact(dep_fact):
+                dep_fact = ""
+            if dep_res and dep_res.confidence < self.config.fact_confidence_threshold:
+                dep_fact = ""
+            dep_type = (self._dep_evidence_types.get(d) if hasattr(self, "_dep_evidence_types") else "") or ""
+            if dep_type.lower() in {"numeric", "list", "comparison", "computation"}:
+                has_evidence = bool(dep_fact) or bool(dep_res and _has_metric_evidence(dep_res.rewritten_text, dep_res.rag_sources))
+                if not has_evidence:
+                    missing_required_deps.append(d)
             if dep_fact:
                 dep_facts.append((d, dep_fact))
             block_parts = [f"### Bằng chứng từ sub-question #{d}"]
@@ -1103,6 +1607,31 @@ class MultiHopOrchestrator:
             evidence_blocks.append(block)
 
         # 2) Gọi reasoner nếu có
+        if missing_required_deps:
+            self.logger.log(
+                f"  SQ#{sq.id} reasoning blocked: missing evidence from deps={missing_required_deps}"
+            )
+            log_step(
+                "REASONING",
+                "OUTPUT",
+                {
+                    "id": sq.id,
+                    "answer": "",
+                    "confidence": 0.0,
+                    "blocked": True,
+                    "missing_required_deps": missing_required_deps,
+                },
+                params,
+                scope=f"SQ#{sq.id}",
+            )
+            return SubQuestionResult(
+                sub_id=sq.id,
+                rewritten_text=rewritten,
+                rag_sources=[],
+                fact="",
+                confidence=0.0,
+            )
+
         self.logger.log(
             f"  SQ#{sq.id} reasoning-evidence: deps={sq.depends_on} "
             f"blocks={len(evidence_blocks)} chars={sum(len(b) for b in evidence_blocks)} "
@@ -1144,6 +1673,13 @@ class MultiHopOrchestrator:
                         f"  SQ#{sq.id} reasoner OK conf={confidence:.2f} "
                         f"answer_preview={answer[:120]}"
                     )
+                ok, reason = _reasoning_filter_answer_valid(self._original_question or sq.text, answer)
+                if answer and not ok:
+                    self.logger.log(
+                        f"  SQ#{sq.id} reasoner rejected for strict filter: {reason}"
+                    )
+                    answer = ""
+                    confidence = 0.0
                 if answer and confidence < self.config.reasoning_confidence_threshold:
                     self.logger.log(
                         f"  SQ#{sq.id} reasoner below threshold: conf={confidence:.2f} "
@@ -1259,13 +1795,26 @@ class MultiHopOrchestrator:
             p["use_websearch"] = True
 
         # Sub-q đã là atomic, không cần fan-out thêm.
-        if (sq.evidence_type or "").lower() in {"list", "comparison", "computation"}:
+        evidence_type = (sq.evidence_type or "").lower()
+        if evidence_type in {"list", "comparison", "computation"}:
             p["max_query"] = max(3, int(p.get("max_query", self.config.subq_max_query)))
+        elif evidence_type == "numeric":
+            p["max_query"] = max(2, int(p.get("max_query", self.config.subq_max_query)))
         else:
             p["max_query"] = max(1, int(self.config.subq_max_query))
         # Đảm bảo web retrieval có tham số tối thiểu để chạy được.
-        p.setdefault("k_pages", 3)
-        p.setdefault("k_docs", 5)
+        if evidence_type in {"numeric", "list", "comparison", "computation"}:
+            p["k_pages"] = max(4, int(p.get("k_pages", 3)))
+            p["k_docs"] = max(6, int(p.get("k_docs", 5)))
+        else:
+            p.setdefault("k_pages", 3)
+            p.setdefault("k_docs", 5)
+
+        if bool(p.get("multi_hop_force_subquery_gates", True)) and evidence_type in {"numeric", "list", "comparison", "computation"}:
+            p["enable_quality_gate"] = True
+            p["enable_pre_crawl_quality_gate"] = True
+            p["enable_chunk_gate"] = True
+            p["source_safety_filter"] = True
         self.logger.log(
             f"  SQ#{sq.id} source-decision: source_mode={source_mode} "
             f"resolver={sq.resolver} -> localdb={bool(p.get('use_localdb'))} "

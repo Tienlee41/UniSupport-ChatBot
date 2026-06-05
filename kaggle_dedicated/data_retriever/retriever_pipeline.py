@@ -175,9 +175,55 @@ class DataRetrieverPipeline:
             return f"bad_domain_for_admission:{domain}"
         if asks_admission and sum(1 for term in job_terms if term in surface_norm) >= 2:
             return "job_content_for_admission_query"
+        if asks_admission:
+            work_abroad_terms = [
+                "eps", "xuat canh", "nguoi lao dong", "lao dong ngoai nuoc",
+                "han quoc", "visa", "ky quy", "giao duc dinh huong",
+                "dao tao dinh huong", "phai cu", "hop dong lao dong",
+            ]
+            if any(term in surface_norm for term in work_abroad_terms):
+                return "work_abroad_training_source_for_admission_query"
+            if "ha noi" in query_norm:
+                outside_hanoi_terms = [
+                    "dai hoc hoa sen", "hoasen", "tp ho chi minh", "thanh pho ho chi minh",
+                    "dai hoc da nang", "viet han", "da nang", "tp.hcm", "tphcm",
+                ]
+                if any(term in surface_norm for term in outside_hanoi_terms):
+                    return "outside_hanoi_source_for_hanoi_query"
         level_reason = self._education_level_mismatch_reason(query, surface)
         if asks_admission and level_reason:
             return level_reason
+        asks_score = any(term in query_norm for term in ["diem chuan", "diem trung tuyen", "diem xet tuyen"])
+        if asks_score and ("a00" in query_norm or "khoi a" in query_norm):
+            explicit_method = any(term in query_norm for term in [
+                "hoc ba", "ccqt", "ket hop", "dgnl", "danh gia nang luc",
+                "dgtd", "danh gia tu duy", "tsa", "hsa", "aptitude",
+            ])
+            non_thpt_method = any(term in surface_norm for term in [
+                "hoc ba", "ccqt", "ket hop", "xet tuyen ket hop",
+                "dgnl", "danh gia nang luc", "dgtd", "danh gia tu duy",
+                "tsa", "hsa", "aptitude",
+            ])
+            thpt_score_signal = any(term in surface_norm for term in [
+                "diem thi thpt", "thi tot nghiep thpt", "tot nghiep thpt",
+                "xet tuyen thpt", "phuong thuc thpt",
+            ])
+            if non_thpt_method and not explicit_method and not thpt_score_signal:
+                return "non_thpt_score_method_for_plain_a00_query"
+        asks_tuition = any(term in query_norm for term in ["hoc phi", "tuition", "muc thu"])
+        if asks_tuition:
+            asks_policy = any(term in query_norm for term in ["mien giam", "hoc bong", "ho tro", "tro cap"])
+            waiver_hits = sum(1 for term in [
+                "mien giam", "hoc bong", "ho tro chi phi", "chinh sach phat trien",
+                "nguoi hoc tai nang", "tro cap", "cap bu hoc phi",
+            ] if term in surface_norm)
+            schedule_signal = any(term in surface_norm for term in [
+                "muc thu hoc phi", "dinh muc hoc phi", "thong bao hoc phi",
+                "quy dinh hoc phi", "don gia hoc phi", "hoc phi nam hoc",
+                "dong/tin chi", "dong / tin chi",
+            ])
+            if waiver_hits and not asks_policy and not schedule_signal:
+                return "waiver_support_source_for_tuition_query"
         return None
 
     def _pre_crawl_quality_gate(
@@ -309,14 +355,14 @@ class DataRetrieverPipeline:
         self,
         total_sources: list[RagSource],
         retrieved_sources: list[RagSource],
-        max_additional: int = 3
+        max_additional: int = 8
     ) -> list[RagSource]:
         """Ensure chunks that contain tables are always included"""
         table_chunks: list[RagSource] = []
-        existing_indexes = {source["chunk_index"] for source in retrieved_sources}
+        existing_indexes = {source.get("chunk_index") for source in retrieved_sources}
         for source in total_sources:
             if self._is_table_chunk(source):
-                if source["chunk_index"] not in existing_indexes:
+                if source.get("chunk_index") not in existing_indexes:
                     table_chunks.append(source)
             if len(table_chunks) >= max_additional:
                 break
@@ -326,13 +372,61 @@ class DataRetrieverPipeline:
 
     def _is_table_chunk(self, source: RagSource) -> bool:
         text = source.get("text", "") or ""
-        return "[BANG]" in text or "[BẢNG]" in text or text.count("|") >= 3
+        return (
+            source.get("content_type") == "table"
+            or "[BANG]" in text
+            or text.count("|") >= 3
+        )
+
+    def _is_table_query(self, query: str) -> bool:
+        q = self._normalize_gate_text(query)
+        table_terms = [
+            "hoc phi", "muc thu", "tin chi", "diem chuan", "diem trung tuyen",
+            "diem xet tuyen", "diem san", "chi tieu", "ma nganh", "to hop",
+            "danh sach", "so sanh", "xep hang", "top",
+        ]
+        return any(term in q for term in table_terms)
+
+    def _expand_table_context(
+        self,
+        total_sources: list[RagSource],
+        selected_sources: list[RagSource],
+        query: str,
+        max_table_chunks: int = 12,
+    ) -> list[RagSource]:
+        """Keep sibling table chunks for broad table questions."""
+        if not selected_sources or not self._is_table_query(query):
+            return selected_sources
+        if not any(self._is_table_chunk(source) for source in selected_sources):
+            return selected_sources
+        if not any(self._is_table_chunk(source) for source in total_sources):
+            return selected_sources
+
+        kept = {(source.get("url", ""), source.get("chunk_index")) for source in selected_sources}
+        expanded: list[RagSource] = []
+        for source in sorted(total_sources, key=lambda item: item.get("chunk_index", 0)):
+            if not self._is_table_chunk(source):
+                continue
+            key = (source.get("url", ""), source.get("chunk_index"))
+            if key in kept:
+                continue
+            expanded.append(source)
+            kept.add(key)
+            if len(expanded) >= max_table_chunks:
+                break
+
+        if expanded:
+            self.logger.log(
+                f"[TableContext] Expanded table context with {len(expanded)} chunk(s) "
+                f"for query: {query[:120]}"
+            )
+        return expanded + selected_sources
 
     def _restore_protected_table_chunks(
         self,
         before_rerank: list[RagSource],
         after_rerank: list[RagSource],
-        max_restore: int = 3,
+        max_restore: int = 8,
     ) -> list[RagSource]:
         kept = {(source.get("url", ""), source.get("chunk_index")) for source in after_rerank}
         restored: list[RagSource] = []
@@ -869,6 +963,7 @@ class DataRetrieverPipeline:
                 # For web: use relative threshold (threshold = max_score * chunk_score_threshold)
                 relavent = self._chunk_ranker.rerank_chunks(relavent, query, relative_threshold=chunk_score_threshold, use_relative_threshold=True)
                 relavent = self._restore_protected_table_chunks(before_rerank, relavent)
+            relavent = self._expand_table_context(rag_sources, relavent, query)
             log_step(
                 "RERANK_CHUNK",
                 "OUTPUT",
@@ -1174,6 +1269,7 @@ class DataRetrieverPipeline:
                 # For web: use relative threshold (threshold = max_score * chunk_score_threshold)
                 relavent_sources = self._chunk_ranker.rerank_chunks(relavent_sources, query, relative_threshold=chunk_score_threshold, use_relative_threshold=True)
                 relavent_sources = self._restore_protected_table_chunks(before_rerank, relavent_sources)
+            relavent_sources = self._expand_table_context(rag_sources, relavent_sources, query)
             log_step(
                 "RERANK_CHUNK",
                 "OUTPUT",

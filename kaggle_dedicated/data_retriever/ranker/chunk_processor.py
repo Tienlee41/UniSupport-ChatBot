@@ -9,6 +9,7 @@ Nâng cấp v5 (phát triển cho câu hỏi phức tạp):
 """
 import math
 import re
+import unicodedata
 from typing import Optional
 
 from ..schema import RagSource
@@ -31,6 +32,14 @@ class ChunkProcessor:
             "haui", "ls", "ueb", "ulis", "ussh", "utc", "ptit", "act", "kma",
             "ajc", "vmu", "yds", "vnu",
         }
+
+    def _norm(self, text: str) -> str:
+        normalized = unicodedata.normalize("NFD", text or "")
+        without_marks = "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
+        return re.sub(r"\s+", " ", without_marks.lower()).strip()
+
+    def _is_table_like(self, text: str, content_type: str = "") -> bool:
+        return content_type == "table" or "[BANG]" in (text or "") or (text or "").count("|") >= 5
 
     # ──────────────────────────────────────────────────────────────────
     # Public API
@@ -70,9 +79,28 @@ class ChunkProcessor:
     def _deduplicate(self, chunks: list[RagSource]) -> list[RagSource]:
         if len(chunks) <= 1:
             return chunks
+        # Table chunks often share the same headers/units, so dense or Jaccard
+        # deduplication can incorrectly collapse different rows of one PDF table.
+        # Keep table-like chunks distinct by (url, chunk_index) and only dedupe
+        # prose chunks aggressively.
+        table_chunks: list[RagSource] = []
+        prose_chunks: list[RagSource] = []
+        seen_table_keys: set[tuple[str, int]] = set()
+        for chunk in chunks:
+            if self._is_table_like(chunk.get("text", ""), chunk.get("content_type", "")):
+                key = (chunk.get("url", ""), int(chunk.get("chunk_index", -1)))
+                if key not in seen_table_keys:
+                    table_chunks.append(chunk)
+                    seen_table_keys.add(key)
+            else:
+                prose_chunks.append(chunk)
+
+        if not prose_chunks:
+            return table_chunks
+
         if self.config.use_dense_dedup and self.embedding is not None:
-            return self._dense_deduplicate(chunks)
-        return self._jaccard_deduplicate(chunks)
+            return table_chunks + self._dense_deduplicate(prose_chunks)
+        return table_chunks + self._jaccard_deduplicate(prose_chunks)
 
     def _jaccard_similarity(self, text1: str, text2: str) -> float:
         words1 = set(text1.lower().split())
@@ -167,6 +195,8 @@ class ChunkProcessor:
         text = chunk["text"]
         url = chunk.get("url", "")
         content_type = chunk.get("content_type", "text")
+        text_norm = self._norm(text)
+        query_norm = self._norm(query)
 
         # Table boost
         if content_type == "table" or "[BANG]" in text or "[BẢNG]" in text or text.count("|") >= 5:
@@ -176,6 +206,17 @@ class ChunkProcessor:
         numbers = self._number_pattern.findall(text)
         if len(numbers) >= 3:
             score *= self.config.numeric_boost
+
+        score_terms = ["diem chuan", "diem trung tuyen", "diem xet tuyen", "diem san"]
+        tuition_terms = ["hoc phi", "muc thu", "tin chi", "trieu", "dong/nam", "nam hoc"]
+        if any(term in query_norm for term in score_terms):
+            if any(term in text_norm for term in score_terms) or "a00" in text_norm or "to hop" in text_norm:
+                score *= 1.45
+        if any(term in query_norm for term in tuition_terms):
+            if any(term in text_norm for term in tuition_terms):
+                score *= 1.55
+        if len(text.strip()) < 140 and not self._is_table_like(text, content_type) and len(numbers) < 2:
+            score *= 0.35
 
         # Domain boost
         for domain in EDU_DOMAINS:
@@ -293,7 +334,11 @@ class ChunkProcessor:
         for chunk in chunks:
             n = len(chunk["text"])
             if total_chars + n > max_chars:
-                break
+                if not final:
+                    kept = dict(chunk)
+                    kept["text"] = chunk["text"][:max_chars]
+                    final.append(kept)  # type: ignore[arg-type]
+                continue
             final.append(chunk)
             total_chars += n
         return final

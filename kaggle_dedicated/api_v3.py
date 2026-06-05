@@ -110,6 +110,11 @@ def _debug_trace_enabled() -> bool:
     return str(os.getenv("BOT_DEBUG_TRACE", "1")).strip().lower() not in _DEBUG_FALSE_VALUES
 
 
+def _debug_full_prompt_enabled() -> bool:
+    """Keep prompt internals opt-in so test logs stay readable."""
+    return str(os.getenv("BOT_DEBUG_FULL_PROMPTS", "0")).strip().lower() not in _DEBUG_FALSE_VALUES
+
+
 def _debug_int_env(name: str, default: int) -> int:
     try:
         return int(os.getenv(name, str(default)))
@@ -364,7 +369,159 @@ def _is_table_like_text(text: str) -> bool:
     return "[BANG]" in (text or "") or (text or "").count("|") >= 6
 
 
-def _extract_admission_table_evidence(question: str, text: str, max_chars: int = 6000) -> str:
+def _strict_evidence_required(question: str) -> bool:
+    """True for queries where an ungrounded answer is worse than no answer."""
+    q_norm = _normalize_for_match(question)
+    structural_terms = [
+        "danh sach", "liet ke", "so sanh", "xep hang", "top", "loc",
+        "cao nhat", "thap nhat", "tren", "duoi", "lon hon", "nho hon",
+        "kem", "giua", "nhung truong", "cac truong",
+    ]
+    metric_terms = [
+        "diem chuan", "diem trung tuyen", "diem xet tuyen", "diem san",
+        "hoc phi", "chi tieu", "ma nganh", "to hop",
+    ]
+    if any(_term_in_text(term, q_norm) for term in structural_terms):
+        return True
+    return sum(1 for term in metric_terms if _term_in_text(term, q_norm)) >= 2
+
+
+def _negative_or_empty_answer(answer: str) -> bool:
+    a_norm = _normalize_for_match(answer)
+    if not a_norm:
+        return True
+    negative_terms = [
+        "khong co thong tin", "khong tim thay", "chua tim thay",
+        "khong du du lieu", "khong du thong tin", "toi khong tim thay",
+        "chua duoc cong bo", "chua cong bo", "chua co thong tin",
+        "chua duoc neu", "chua neu", "chua duoc de cap", "chua de cap",
+        "khong neu", "khong duoc neu", "khong duoc de cap",
+        "khong duoc cong bo", "not published",
+        "unknown", "none", "n/a",
+    ]
+    return any(term in a_norm for term in negative_terms)
+
+
+def _split_answer_entries(answer: str) -> list[str]:
+    entries = re.split(r"\s*(?:;|\n|\r|\u2022)\s*", answer or "")
+    return [entry.strip(" -\t") for entry in entries if len(entry.strip(" -\t")) >= 4]
+
+
+def _calibrate_fact_confidence(
+    answer: str,
+    confidence: float,
+    evidence_type: str,
+    question: str,
+    context: str = "",
+) -> float:
+    """Cap confidence when the extractor returned an unsupported-looking fact."""
+    try:
+        confidence = max(0.0, min(1.0, float(confidence)))
+    except Exception:
+        confidence = 0.0
+    if _negative_or_empty_answer(answer):
+        return min(confidence, 0.15)
+
+    q_norm = _normalize_for_match(question)
+    et = (evidence_type or "factual").lower()
+    metric_query = any(
+        _term_in_text(term, q_norm)
+        for term in [
+            "diem chuan", "diem trung tuyen", "diem xet tuyen", "diem san",
+            "hoc phi", "chi tieu",
+        ]
+    )
+    if et in {"numeric", "comparison", "computation"} and metric_query and not re.search(r"\d", answer):
+        return min(confidence, 0.25)
+
+    context_norm = _normalize_for_match(context)
+    if context_norm:
+        asks_grad = any(term in q_norm for term in ["thac si", "cao hoc", "sau dai hoc", "tien si"])
+        has_grad_context = any(term in context_norm for term in ["thac si", "cao hoc", "sau dai hoc", "nghien cuu sinh", "tien si"])
+        has_undergrad_context = any(term in context_norm for term in ["dai hoc chinh quy", "bac dai hoc", "trinh do dai hoc", "sinh vien dai hoc"])
+        if not asks_grad and has_grad_context and not has_undergrad_context:
+            return min(confidence, 0.15)
+
+        if et in {"numeric", "comparison", "computation"} and metric_query:
+            answer_numbers = [_normalize_number_token(x) for x in re.findall(r"\d+(?:[,.]\d+)?", answer or "")]
+            missing = [
+                n for n in answer_numbers
+                if n and n not in context_norm and n.replace(".", ",") not in context_norm
+            ]
+            if missing:
+                return min(confidence, 0.25)
+
+        if any(term in q_norm for term in ["diem chuan", "diem trung tuyen", "diem xet tuyen"]):
+            explicit_method = any(term in q_norm for term in [
+                "hoc ba", "ccqt", "ket hop", "dgnl", "danh gia nang luc",
+                "dgtd", "danh gia tu duy", "tsa", "hsa", "aptitude",
+            ])
+            plain_a00_query = ("a00" in q_norm or "khoi a" in q_norm) and not explicit_method
+            non_thpt_context = any(term in context_norm for term in [
+                "hoc ba", "ccqt", "ket hop", "xet tuyen ket hop",
+                "dgnl", "danh gia nang luc", "dgtd", "danh gia tu duy",
+                "tsa", "hsa", "aptitude",
+            ])
+            thpt_score_signal = any(term in context_norm for term in [
+                "diem thi thpt", "thi tot nghiep thpt", "tot nghiep thpt",
+                "xet tuyen thpt", "phuong thuc thpt",
+            ])
+            if plain_a00_query and non_thpt_context and not thpt_score_signal:
+                return min(confidence, 0.20)
+
+    if _term_in_text("hoc phi", q_norm):
+        a_norm = _normalize_for_match(answer)
+        asks_waiver = any(term in q_norm for term in ["mien", "hoc bong", "ho tro"])
+        zero_like = re.search(r"\b0(?:[,.]0+)?\b", a_norm) or "khong phai dong hoc phi" in a_norm
+        if zero_like and not asks_waiver:
+            return min(confidence, 0.25)
+        if context_norm:
+            waiver_hits = sum(1 for term in [
+                "mien giam", "hoc bong", "ho tro chi phi", "chinh sach phat trien",
+                "nguoi hoc tai nang", "tro cap", "cap bu hoc phi",
+            ] if term in context_norm)
+            schedule_signal = any(term in context_norm for term in [
+                "muc thu hoc phi", "dinh muc hoc phi", "thong bao hoc phi",
+                "quy dinh hoc phi", "don gia hoc phi", "hoc phi nam hoc",
+                "dong/tin chi", "dong / tin chi",
+            ])
+            if waiver_hits and not asks_waiver and not schedule_signal:
+                return min(confidence, 0.20)
+
+    if et == "list" and _strict_evidence_required(question):
+        entries = _split_answer_entries(answer)
+        if len(entries) < 2 and any(_term_in_text(t, q_norm) for t in ["danh sach", "cac truong", "nhung truong", "top"]):
+            return min(confidence, 0.25)
+    return confidence
+
+
+def _normalize_number_token(token: str) -> str:
+    return (token or "").strip().replace(",", ".")
+
+
+def _reasoner_answer_grounded(answer: str, evidence: str, question: str) -> tuple[bool, str]:
+    """Guard against fabricated numeric filters/rankings from reasoning hops."""
+    if _negative_or_empty_answer(answer):
+        return True, "empty_or_negative"
+    if not _strict_evidence_required(question):
+        return True, "not_strict"
+
+    evidence_norm = _normalize_for_match(f"{evidence}\n{question}")
+    answer_numbers = [_normalize_number_token(x) for x in re.findall(r"\d+(?:[,.]\d+)?", answer or "")]
+    missing_numbers = [
+        number for number in answer_numbers
+        if number and number not in evidence_norm and number.replace(".", ",") not in evidence_norm
+    ]
+    if missing_numbers:
+        return False, f"numbers_not_in_evidence={missing_numbers[:5]}"
+
+    entries = _split_answer_entries(answer)
+    if not entries:
+        return False, "no_entries"
+    return True, "ok"
+
+
+def _extract_admission_table_evidence(question: str, text: str, max_chars: int = 12000) -> str:
     if not text or max_chars <= 0 or not _is_table_like_text(text):
         return ""
     q_norm = _normalize_for_match(question)
@@ -372,7 +529,18 @@ def _extract_admission_table_evidence(question: str, text: str, max_chars: int =
         _term_in_text(term, q_norm)
         for term in ["diem chuan", "diem trung tuyen", "diem xet tuyen", "diem san"]
     )
-    if not score_query:
+    tuition_query = any(
+        _term_in_text(term, q_norm)
+        for term in [
+            "hoc phi", "muc thu", "tin chi", "trieu",
+            "dong/nam", "dong / nam", "dong/thang", "dong / thang",
+        ]
+    )
+    broad_list_query = any(
+        _term_in_text(term, q_norm)
+        for term in ["danh sach", "so sanh", "xep hang", "top", "loc", "cac truong", "nhung truong"]
+    )
+    if not (score_query or tuition_query or broad_list_query):
         return ""
 
     lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
@@ -382,15 +550,26 @@ def _extract_admission_table_evidence(question: str, text: str, max_chars: int =
     header_terms = [
         "diem chuan", "diem trung tuyen", "diem xet tuyen", "diem san",
         "ma xet tuyen", "ma nganh", "ten nganh", "nganh dao tao", "to hop",
+        "hoc phi", "muc thu", "tin chi", "don gia", "dong/nam", "dong / nam",
+        "dong/thang", "dong / thang", "trieu", "nam hoc", "hoc ky",
     ]
     start_idx: int | None = None
+    # Prefer the actual table header over a generic [BANG] marker. Many crawled
+    # pages contain decorative/image tables before the PDF table, and starting
+    # too early can cut off the rows that the reader needs.
     for idx, line in enumerate(lines):
         norm = _normalize_for_match(line)
-        is_table_marker = "[bang]" in norm
         is_header = "|" in line and any(_term_in_text(term, norm) for term in header_terms)
-        if is_table_marker or is_header:
+        if is_header:
             start_idx = max(0, idx - 4)
             break
+
+    if start_idx is None:
+        for idx, line in enumerate(lines):
+            norm = _normalize_for_match(line)
+            if "[bang]" in norm:
+                start_idx = max(0, idx - 2)
+                break
 
     if start_idx is None:
         table_rows = [i for i, line in enumerate(lines) if "|" in line and line.count("|") >= 2]
@@ -413,32 +592,50 @@ def _augment_rag_with_web_table_evidence(
     rag_sources: list[RagSource],
     *,
     max_sources: int = 2,
-    max_chars: int = 6000,
+    max_chars: int = 12000,
 ) -> list[RagSource]:
     """Rescue exact admissions tables from web_sources when chunk ranking misses them."""
     if not web_sources:
         return rag_sources
-    existing_table_urls = {
-        r.get("url", "")
-        for r in rag_sources
-        if _is_table_like_text(r.get("text", "") or "")
-    }
+    existing_table_by_url: dict[str, str] = {}
+    for rag in rag_sources:
+        url = rag.get("url", "")
+        text = rag.get("text", "") or ""
+        if url and _is_table_like_text(text):
+            existing_table_by_url[url] = existing_table_by_url.get(url, "") + "\n" + text
+
     additions: list[RagSource] = []
     for idx, source in enumerate(web_sources, 1):
         url = source.get("url", "")
-        if not url or url in existing_table_urls:
+        if not url:
             continue
         table_text = _extract_admission_table_evidence(
             question, source.get("text", "") or "", max_chars=max_chars
         )
         if not table_text:
             continue
+        existing_text = existing_table_by_url.get(url, "")
+        if existing_text:
+            existing_norm = _normalize_for_match(existing_text)
+            table_norm = _normalize_for_match(table_text)
+            existing_ratio = len(existing_text) / max(1, len(table_text))
+            key_terms = [
+                "dong/thang", "dong / thang", "dong/tin chi", "dong / tin chi",
+                "hoc lai", "cai thien", "bang kep", "sau dai hoc", "thac si", "tien si",
+            ]
+            missing_key_terms = [
+                term for term in key_terms
+                if term in table_norm and term not in existing_norm
+            ]
+            if existing_ratio >= 0.8 and not missing_key_terms:
+                continue
         additions.append({
             "chunk_index": -100000 - idx,
             "query": question,
             "title": source.get("title", ""),
             "url": url,
             "text": table_text,
+            "content_type": "table",
         })
         if len(additions) >= max_sources:
             break
@@ -449,6 +646,316 @@ def _augment_rag_with_web_table_evidence(
         )
         _debug_source_list("READER_RESCUED_TABLE_CHUNKS", additions)
     return additions + rag_sources
+
+
+def _question_metric_kind(text: str) -> str:
+    norm = _normalize_for_match(text)
+    has_tuition = any(
+        _term_in_text(term, norm)
+        for term in ["hoc phi", "muc thu", "dong/tin chi", "dong/thang", "dong/nam", "trieu"]
+    )
+    has_score = any(
+        _term_in_text(term, norm)
+        for term in ["diem chuan", "diem trung tuyen", "diem xet tuyen", "diem san", "khoi a00", "a00"]
+    )
+    if has_tuition and not has_score:
+        return "tuition"
+    if has_score and not has_tuition:
+        return "score"
+    if has_tuition:
+        return "tuition"
+    if has_score:
+        return "score"
+    return ""
+
+
+def _expected_metrics(question: str) -> list[str]:
+    norm = _normalize_for_match(question)
+    out: list[str] = []
+    if any(_term_in_text(term, norm) for term in ["diem chuan", "diem trung tuyen", "diem xet tuyen", "diem san"]):
+        out.append("score")
+    if any(_term_in_text(term, norm) for term in ["hoc phi", "muc thu"]):
+        out.append("tuition")
+    return out
+
+
+_SCHOOL_ALIAS_MAP: dict[str, list[str]] = {
+    "UET": ["uet", "dai hoc cong nghe", "truong dai hoc cong nghe", "dhqghn", "vnu-uet"],
+    "PTIT": ["ptit", "hoc vien cong nghe buu chinh vien thong", "buu chinh vien thong"],
+    "HUST": ["hust", "dai hoc bach khoa ha noi", "bach khoa ha noi"],
+    "HAUI": ["haui", "dai hoc cong nghiep ha noi", "cong nghiep ha noi"],
+    "UTT": ["utt", "dai hoc cong nghe giao thong van tai", "cong nghe giao thong van tai"],
+    "USTH": ["usth", "dai hoc khoa hoc va cong nghe ha noi"],
+}
+
+
+def _school_label_from_text(text: str) -> str:
+    norm = _normalize_for_match(text)
+    for label, aliases in _SCHOOL_ALIAS_MAP.items():
+        if any(_term_in_text(alias, norm) for alias in aliases):
+            return label
+    return ""
+
+
+def _expected_schools(question: str) -> list[str]:
+    norm = _normalize_for_match(question)
+    schools = [
+        label
+        for label, aliases in _SCHOOL_ALIAS_MAP.items()
+        if any(_term_in_text(alias, norm) for alias in aliases)
+    ]
+    return schools
+
+
+def _metric_answer_valid(metric: str, answer: str) -> bool:
+    if _negative_or_empty_answer(answer):
+        return False
+    norm = _normalize_for_match(answer)
+    if not re.search(r"\d", norm):
+        return False
+    money_signal = bool(
+        re.search(r"\d[\d.,]*(?:\s*[-–]\s*\d[\d.,]*)?\s*(trieu|dong|vnd|vnđ)", norm)
+        or _term_in_text("dong/tin chi", norm)
+        or _term_in_text("dong/thang", norm)
+        or _term_in_text("dong/nam", norm)
+    )
+    score_signal = _term_in_text("diem", norm) or bool(re.search(r"\b(?:1[5-9]|2[0-9]|30)(?:[,.]\d{1,2})?\b", norm))
+    if metric == "tuition":
+        return money_signal
+    if metric == "score":
+        return score_signal and not money_signal
+    return True
+
+
+def _line_matches_query_focus(line: str, query: str) -> int:
+    line_norm = _normalize_for_match(line)
+    query_norm = _normalize_for_match(query)
+    score = 0
+    focus_terms = [
+        "khoa hoc may tinh",
+        "cong nghe thong tin",
+        "ky thuat may tinh",
+        "tri tue nhan tao",
+        "an toan thong tin",
+        "he thong thong tin",
+    ]
+    for term in focus_terms:
+        if _term_in_text(term, query_norm) and _term_in_text(term, line_norm):
+            score += 5
+    for label, aliases in _SCHOOL_ALIAS_MAP.items():
+        if any(_term_in_text(alias, query_norm) for alias in aliases):
+            if any(_term_in_text(alias, line_norm) for alias in aliases):
+                score += 3
+    if _term_in_text("a00", query_norm) and _term_in_text("a00", line_norm):
+        score += 2
+    if "|" in line:
+        score += 1
+    return score
+
+
+def _extract_score_from_rag(query: str, rag_sources: list[RagSource]) -> str:
+    best: tuple[int, float, str] | None = None
+    for src in rag_sources[:12]:
+        text = src.get("text", "") or ""
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line or not re.search(r"\d", line):
+                continue
+            line_norm = _normalize_for_match(line)
+            if not any(_term_in_text(term, line_norm) for term in ["diem chuan", "diem trung tuyen", "diem thi", "a00", "khoa hoc may tinh", "cong nghe thong tin"]):
+                continue
+            focus_score = _line_matches_query_focus(line, query)
+            if focus_score <= 0:
+                continue
+            values: list[float] = []
+            for token in re.findall(r"(?<!\d)(?:1[5-9]|2[0-9]|30)(?:[,.]\d{1,2})?(?!\d)", line_norm):
+                try:
+                    values.append(float(token.replace(",", ".")))
+                except Exception:
+                    pass
+            if not values:
+                continue
+            value = max(values)
+            candidate = (focus_score, value, line)
+            if best is None or candidate[0] > best[0] or (candidate[0] == best[0] and candidate[1] > best[1]):
+                best = candidate
+    if best is None:
+        return ""
+    value = best[1]
+    return f"{value:g} diem"
+
+
+def _extract_tuition_from_rag(query: str, rag_sources: list[RagSource]) -> str:
+    money_re = re.compile(
+        r"\d[\d.,]*(?:\s*[-–]\s*\d[\d.,]*)?\s*(?:trieu|dong|vnd|vnđ)(?:\s*/?\s*(?:nam|thang|tin chi|hoc ky))?",
+        re.IGNORECASE,
+    )
+    best: tuple[int, str] | None = None
+    for src in rag_sources[:12]:
+        text = src.get("text", "") or ""
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            line_norm = _normalize_for_match(line)
+            if not money_re.search(line_norm):
+                continue
+            if _term_in_text("diem chuan", line_norm) and not _term_in_text("hoc phi", line_norm):
+                continue
+            focus_score = _line_matches_query_focus(line, query)
+            if _term_in_text("hoc phi", line_norm) or _term_in_text("muc thu", line_norm):
+                focus_score += 3
+            if focus_score <= 0:
+                continue
+            candidate = (focus_score, line[:500])
+            if best is None or candidate[0] > best[0]:
+                best = candidate
+    return best[1] if best else ""
+
+
+def _extract_checked_metric_fact(metric: str, query: str, result: Any) -> tuple[str, str]:
+    raw_fact = (getattr(result, "fact", "") or "").strip()
+    if raw_fact and _metric_answer_valid(metric, raw_fact):
+        return raw_fact, "fact_extractor"
+    rag_sources = getattr(result, "rag_sources", []) or []
+    if metric == "score":
+        parsed = _extract_score_from_rag(query, rag_sources)
+    elif metric == "tuition":
+        parsed = _extract_tuition_from_rag(query, rag_sources)
+    else:
+        parsed = ""
+    if parsed and _metric_answer_valid(metric, parsed):
+        return parsed, "parsed_from_rag"
+    return "", "missing_or_unit_mismatch"
+
+
+def _build_multihop_checked_context(question: str, trace: Any) -> tuple[list[RagSource], dict[str, Any]]:
+    """Create a guarded synthetic context from multi-hop slots.
+
+    This keeps the final reader from filling a missing tuition slot with a
+    nearby admission score, and gives list/filter queries a deterministic
+    "not enough evidence" signal when no tuition/score intersection exists.
+    """
+    if trace is None:
+        return [], {"enabled": False}
+    plan = getattr(trace, "plan", None)
+    if plan is None or not getattr(plan, "sub_questions", None):
+        return [], {"enabled": False}
+    metrics = _expected_metrics(question)
+    if not metrics:
+        return [], {"enabled": False}
+
+    q_norm = _normalize_for_match(question)
+    is_comparison = any(_term_in_text(term, q_norm) for term in ["so sanh", "giua", "khac nhau"])
+    is_filter_list = any(_term_in_text(term, q_norm) for term in ["danh sach", "loc", "cac truong", "nhung truong", "top", "xep hang"])
+
+    slots: dict[str, dict[str, dict[str, str]]] = {}
+    reasoning_fact = ""
+    for sq in plan.sub_questions:
+        res = trace.per_sub_q.get(sq.id)
+        if not res:
+            continue
+        if sq.resolver == "reasoning":
+            if (res.fact or "").strip():
+                reasoning_fact = (res.fact or "").strip()
+            continue
+        metric = _question_metric_kind(f"{sq.text} {getattr(res, 'rewritten_text', '')}")
+        if metric not in metrics:
+            continue
+        school_text = f"{sq.text} {getattr(res, 'rewritten_text', '')} "
+        for src in (getattr(res, "rag_sources", []) or [])[:3]:
+            school_text += f" {src.get('title', '')} {src.get('url', '')}"
+        school = _school_label_from_text(school_text) or f"SQ#{sq.id}"
+        fact, source = _extract_checked_metric_fact(metric, getattr(res, "rewritten_text", sq.text), res)
+        slots.setdefault(school, {})[metric] = {
+            "value": fact,
+            "source": source,
+            "sub_question": str(sq.id),
+        }
+
+    expected_schools = _expected_schools(question)
+    if not expected_schools:
+        expected_schools = [k for k in slots if not k.startswith("SQ#")]
+    if not expected_schools and is_filter_list:
+        expected_schools = sorted(slots.keys())
+
+    missing: list[str] = []
+    lines: list[str] = [
+        "[Bang fact da kiem tra tu multi-hop]",
+        "Quy tac: diem chuan phai co don vi diem; hoc phi phai co don vi tien. Khong dung diem chuan thay cho hoc phi.",
+    ]
+    if is_comparison and expected_schools:
+        header = "| Truong | " + " | ".join("Diem chuan" if m == "score" else "Hoc phi" for m in metrics) + " | Trang thai |"
+        sep = "|---" * (len(metrics) + 2) + "|"
+        lines.extend([header, sep])
+        for school in expected_schools:
+            row_values: list[str] = []
+            row_missing: list[str] = []
+            for metric in metrics:
+                item = slots.get(school, {}).get(metric, {})
+                value = item.get("value", "")
+                if value:
+                    row_values.append(value)
+                else:
+                    label = "diem chuan" if metric == "score" else "hoc phi"
+                    row_values.append("CHUA TIM THAY TRONG NGUON")
+                    row_missing.append(label)
+                    missing.append(f"{school}:{metric}")
+            status = "du thong tin" if not row_missing else "thieu " + ", ".join(row_missing)
+            lines.append(f"| {school} | " + " | ".join(row_values) + f" | {status} |")
+    elif is_filter_list:
+        reasoning_norm = _normalize_for_match(reasoning_fact)
+        has_score_value = bool(re.search(r"\b(?:1[5-9]|2[0-9]|30)(?:[,.]\d{1,2})?\b", reasoning_norm))
+        has_money_value = bool(
+            re.search(r"\d[\d.,]*\s*(?:trieu|dong|vnd|vnđ)", reasoning_norm)
+            or "dong/tin chi" in reasoning_norm
+            or "dong/thang" in reasoning_norm
+            or "dong/nam" in reasoning_norm
+        )
+        invalid_reasoning = (
+            _negative_or_empty_answer(reasoning_fact)
+            or any(term in reasoning_norm for term in ["unknown", "khong co thong tin", "khong duoc cung cap", "chua tim thay"])
+            or ("score" in metrics and not has_score_value)
+            or ("tuition" in metrics and not has_money_value)
+        )
+        if reasoning_fact and not invalid_reasoning:
+            lines.append("Ket qua reasoning co bang chung:")
+            lines.append(reasoning_fact)
+        else:
+            missing.append("final_filtered_list")
+            lines.append(
+                "CHUA DU BANG CHUNG DE LOC DANH SACH: can ca diem chuan va hoc phi hop le cho tung truong."
+            )
+    else:
+        for school, by_metric in slots.items():
+            for metric, item in by_metric.items():
+                label = "diem chuan" if metric == "score" else "hoc phi"
+                value = item.get("value") or "CHUA TIM THAY TRONG NGUON"
+                if not item.get("value"):
+                    missing.append(f"{school}:{metric}")
+                lines.append(f"- {school} / {label}: {value}")
+
+    if not slots and not reasoning_fact:
+        return [], {"enabled": False}
+
+    text = "\n".join(lines)
+    chunk: RagSource = {
+        "query": question,
+        "url": "multihop://checked_slots",
+        "title": "Bang fact multi-hop da kiem tra",
+        "text": text,
+        "chunk_index": -200000,
+    }  # type: ignore[assignment]
+    report = {
+        "enabled": True,
+        "metrics": metrics,
+        "schools": expected_schools,
+        "missing": missing,
+        "partial": bool(missing) and is_comparison,
+        "hard_no_answer": bool(missing) and is_filter_list,
+        "summary": text,
+    }
+    return [chunk], report
 
 
 class KeywordInfo(TypedDict):
@@ -691,6 +1198,54 @@ class WebRetriever:
     def _metric_mismatch_reason(self, question: str, candidate_text: str) -> str | None:
         question_norm = _normalize_for_match(question)
         candidate_norm = _normalize_for_match(candidate_text)
+        score_like_query = any(term in question_norm for term in ["diem chuan", "diem trung tuyen", "diem xet tuyen"])
+        tuition_like_query = any(term in question_norm for term in ["hoc phi", "tuition", "muc thu", "dong hoc phi"])
+        plain_a00_query = (
+            score_like_query
+            and ("a00" in question_norm or "khoi a" in question_norm)
+            and not any(
+                term in question_norm
+                for term in [
+                    "hoc ba", "ccqt", "ket hop", "dgnl", "danh gia nang luc",
+                    "dgtd", "danh gia tu duy", "tsa", "hsa", "aptitude",
+                ]
+            )
+        )
+        if plain_a00_query:
+            non_thpt_method = any(
+                term in candidate_norm
+                for term in [
+                    "hoc ba", "ccqt", "ket hop", "xet tuyen ket hop",
+                    "dgnl", "danh gia nang luc", "dgtd", "danh gia tu duy",
+                    "tsa", "hsa", "aptitude",
+                ]
+            )
+            thpt_score_signal = any(
+                term in candidate_norm
+                for term in [
+                    "diem thi thpt", "thi tot nghiep thpt", "tot nghiep thpt",
+                    "xet tuyen thpt", "phuong thuc thpt",
+                ]
+            )
+            if non_thpt_method and not thpt_score_signal:
+                return "non_thpt_score_method_for_plain_a00_query"
+
+        if tuition_like_query:
+            asks_policy = any(term in question_norm for term in ["mien giam", "hoc bong", "ho tro", "tro cap"])
+            waiver_terms = [
+                "mien giam", "hoc bong", "ho tro chi phi", "chinh sach phat trien",
+                "nguoi hoc tai nang", "tro cap", "cap bu hoc phi",
+            ]
+            schedule_terms = [
+                "muc thu hoc phi", "dinh muc hoc phi", "thong bao hoc phi",
+                "quy dinh hoc phi", "don gia hoc phi", "hoc phi nam hoc",
+                "dong/tin chi", "dong / tin chi",
+            ]
+            waiver_hits = sum(1 for term in waiver_terms if term in candidate_norm)
+            schedule_signal = any(term in candidate_norm for term in schedule_terms)
+            if waiver_hits and not asks_policy and not schedule_signal:
+                return "waiver_support_source_for_tuition_query"
+
         metric_groups = [
             ("tuition", ["hoc phi", "tuition", "muc thu", "dong hoc phi"]),
             ("admission_score", ["diem chuan", "diem trung tuyen", "diem xet tuyen"]),
@@ -1255,8 +1810,9 @@ class APIModelCore:
                 }),
                 limit=0,
             )
-            _debug_block(f"LLM_SYSTEM_PROMPT {call_type}", instruction, limit=prompt_limit)
-            _debug_block(f"LLM_USER_PROMPT {call_type}", prompt, limit=prompt_limit)
+            if _debug_full_prompt_enabled():
+                _debug_block(f"LLM_SYSTEM_PROMPT {call_type}", instruction, limit=prompt_limit)
+                _debug_block(f"LLM_USER_PROMPT {call_type}", prompt, limit=prompt_limit)
         model_id = params["model_id"]
         if "gpt" in model_id:
             while True:
@@ -1369,8 +1925,15 @@ class APIModel(APIModelCore):
         }
         # List mode: lấy nhiều chunks hơn + cắt dài hơn để model thấy đủ data.
         if is_list_mode:
-            top = rag_sources[:8]
-            chunk_max_chars = 1200
+            def _fact_chunk_key(c: dict) -> tuple[int, int, int]:
+                text = c.get("text", "") or ""
+                table_like = 1 if _is_table_like_text(text) else 0
+                has_number = 1 if re.search(r"\d", text) else 0
+                title_only = 1 if len(text.strip()) < 160 else 0
+                return (table_like, has_number, -title_only)
+
+            top = sorted(rag_sources[:12], key=_fact_chunk_key, reverse=True)[:8]
+            chunk_max_chars = 4000
             run_params = LIST_FACT_EXTRACTOR_PARAMS
         else:
             top = rag_sources[:5]
@@ -1421,7 +1984,14 @@ class APIModel(APIModelCore):
         try:
             result = json.loads(extract_json(text))
             answer = str(result.get("answer", "")).strip()
+            if not answer and isinstance(result.get("items"), list):
+                answer = " ; ".join(
+                    f"{item.get('name', '')}: {item.get('value', '')}".strip(": ")
+                    for item in result.get("items", [])
+                    if isinstance(item, dict) and (item.get("name") or item.get("value"))
+                ).strip()
             conf = float(result.get("confidence", 0.0))
+            conf = _calibrate_fact_confidence(answer, conf, evidence_type, sub_q_text, context)
             _debug_block("FACT_EXTRACTOR_PARSED", _debug_json({"answer": answer, "confidence": conf}), limit=0)
             return answer, conf
         except Exception:
@@ -1483,8 +2053,31 @@ class APIModel(APIModelCore):
         try:
             result = json.loads(extract_json(text))
             answer = str(result.get("answer", "")).strip()
+            if not answer and isinstance(result.get("items"), list):
+                answer = " ; ".join(
+                    f"{item.get('name', '')}: {item.get('value', '')}".strip(": ")
+                    for item in result.get("items", [])
+                    if isinstance(item, dict) and (item.get("name") or item.get("value"))
+                ).strip()
             conf = float(result.get("confidence", 0.0))
-            _debug_block("REASONER_PARSED", _debug_json({"answer": answer, "confidence": conf}), limit=0)
+            conf = _calibrate_fact_confidence(answer, conf, "computation", f"{original_question} {sub_q_text}")
+            grounded, grounding_reason = _reasoner_answer_grounded(
+                answer, joined, f"{original_question} {sub_q_text}"
+            )
+            if not grounded:
+                print(f"[ReasonerGuard] discard ungrounded answer: {grounding_reason}")
+                answer = ""
+                conf = 0.0
+            _debug_block(
+                "REASONER_PARSED",
+                _debug_json({
+                    "answer": answer,
+                    "confidence": conf,
+                    "grounded": grounded,
+                    "grounding_reason": grounding_reason,
+                }),
+                limit=0,
+            )
             return answer, conf
         except Exception:
             # Một số trường hợp LLM không trả JSON: dùng raw text như answer.
@@ -1778,6 +2371,21 @@ class CustomQA:
             },
             request["params"],
         )
+        hard_answer = request["params"].get("_hard_no_answer_text")
+        if hard_answer:
+            text = str(hard_answer)
+            yield text
+            log_step(
+                "FINAL_READER",
+                "OUTPUT",
+                {
+                    "answer_chars": len(text),
+                    "answer_preview": trace_preview(text, 1600),
+                    "hard_no_answer": True,
+                },
+                request["params"],
+            )
+            return
         async for chunk in await self.llm_call(
             call_type=CallType.READER, 
             instruction=READER_UNTRAINED_INSTRUCTION+READER_UNTRAINED_PREFIX, 
@@ -1859,6 +2467,40 @@ class CustomQA:
             )
         else:
             _debug_block("MULTI_HOP_TRACE", "trace=None (single-hop fallback or disabled)")
+        if multi_hop_trace is not None:
+            q_norm = _normalize_for_match(question)
+            strict_multi_hop = any(_term_in_text(t, q_norm) for t in ["so sanh", "danh sach", "xep hang", "top", "loc"])
+            needs_metric = any(_term_in_text(t, q_norm) for t in ["diem chuan", "diem trung tuyen", "hoc phi"])
+            missing_reasoning: list[int] = []
+            missing_metric_subq: list[int] = []
+            for sq in multi_hop_trace.plan.sub_questions:
+                res = multi_hop_trace.per_sub_q.get(sq.id)
+                fact = (getattr(res, "fact", "") or "").strip() if res else ""
+                if _negative_or_empty_answer(fact):
+                    fact = ""
+                sq_norm = _normalize_for_match(sq.text)
+                if sq.resolver == "reasoning" and not fact:
+                    missing_reasoning.append(sq.id)
+                elif any(_term_in_text(t, sq_norm) for t in ["diem chuan", "diem trung tuyen", "hoc phi"]) and not fact:
+                    missing_metric_subq.append(sq.id)
+            if strict_multi_hop and needs_metric and (missing_reasoning or missing_metric_subq):
+                params["_hard_no_answer_text"] = (
+                    "Tôi chưa tìm thấy đủ thông tin đáng tin cậy để trả lời đầy đủ câu hỏi này."
+                )
+                print(
+                    f"[MultiHopHardStop] missing_reasoning={missing_reasoning} "
+                    f"missing_metric_subq={missing_metric_subq}"
+                )
+                log_step(
+                    "MULTIHOP_HARD_STOP",
+                    "OUTPUT",
+                    {
+                        "missing_reasoning": missing_reasoning,
+                        "missing_metric_subq": missing_metric_subq,
+                        "answer": params["_hard_no_answer_text"],
+                    },
+                    params,
+                )
         log_step(
             "FINAL_AGGREGATE",
             "INPUT",
@@ -1866,8 +2508,8 @@ class CustomQA:
                 "question": question,
                 "web_sources_before_table_rescue": len(web_sources),
                 "rag_sources_before_table_rescue": len(rag_sources),
-                "table_rescue_max_sources": int(params.get("reader_table_rescue_max_sources", 2)),
-                "table_rescue_max_chars": int(params.get("reader_table_rescue_max_chars", 6000)),
+                "table_rescue_max_sources": int(params.get("reader_table_rescue_max_sources", 3)),
+                "table_rescue_max_chars": int(params.get("reader_table_rescue_max_chars", 12000)),
             },
             params,
         )
@@ -1875,9 +2517,30 @@ class CustomQA:
             question,
             web_sources,
             rag_sources,
-            max_sources=int(params.get("reader_table_rescue_max_sources", 2)),
-            max_chars=int(params.get("reader_table_rescue_max_chars", 6000)),
+            max_sources=int(params.get("reader_table_rescue_max_sources", 3)),
+            max_chars=int(params.get("reader_table_rescue_max_chars", 12000)),
         )
+        checked_chunks, slot_report = _build_multihop_checked_context(question, multi_hop_trace)
+        if checked_chunks:
+            rag_sources = checked_chunks + rag_sources
+            params["_multi_hop_slot_gate"] = slot_report
+            if slot_report.get("partial"):
+                params["_allow_partial_answer"] = True
+            if slot_report.get("hard_no_answer"):
+                params["_hard_no_answer_text"] = (
+                    "Tôi chưa tìm thấy đủ thông tin điểm chuẩn và học phí đáng tin cậy "
+                    "để lọc danh sách theo tất cả điều kiện."
+                )
+            log_step(
+                "MULTIHOP_SLOT_GATE",
+                "OUTPUT",
+                {
+                    "report": slot_report,
+                    "checked_chunks": compact_sources(checked_chunks, "rag", limit=3),
+                },
+                params,
+            )
+            _debug_block("MULTIHOP_SLOT_GATE", _debug_json(slot_report), limit=0)
         log_step(
             "FINAL_AGGREGATE",
             "OUTPUT",
@@ -1920,7 +2583,13 @@ class CustomQA:
             )
             suff = self.sufficiency.check(question, rag_sources)
             params["sufficiency_score"] = suff.score
-            params["low_confidence"] = not suff.sufficient
+            strict_suff_min = float(params.get("strict_sufficiency_min_score", 0.35))
+            strict_low_score = (
+                _strict_evidence_required(question)
+                and not bool(params.get("_allow_partial_answer"))
+                and suff.score < strict_suff_min
+            )
+            params["low_confidence"] = (not suff.sufficient) or strict_low_score
             print(
                 f"[SufficiencyGate] score={suff.score:.4f} sufficient={suff.sufficient} "
                 f"used={suff.used_chunks} reason={suff.reason}"
@@ -1934,9 +2603,28 @@ class CustomQA:
                     "used_chunks": suff.used_chunks,
                     "reason": suff.reason,
                     "low_confidence": params["low_confidence"],
+                    "strict_low_score": strict_low_score,
+                    "strict_sufficiency_min_score": strict_suff_min,
                 },
                 params,
             )
+            if (
+                params.get("low_confidence")
+                and bool(params.get("strict_sufficiency_gate", True))
+                and _strict_evidence_required(question)
+                and not bool(params.get("_allow_partial_answer"))
+            ):
+                params["_hard_no_answer_text"] = "Tôi chưa tìm thấy thông tin phù hợp."
+                log_step(
+                    "SUFFICIENCY_GATE",
+                    "OUTPUT",
+                    {
+                        "hard_stop": True,
+                        "reason": "strict_evidence_required_but_insufficient",
+                        "answer": params["_hard_no_answer_text"],
+                    },
+                    params,
+                )
         except Exception as e:
             print(f"[SufficiencyGate] skipped due to error: {e}")
             params["low_confidence"] = False
@@ -1961,7 +2649,13 @@ class CustomQA:
         )
         context = SourceFormat()(rag_sources)
         prompt = READER_TEMPLATE.format(context=context, question=question)
-        if params.get("low_confidence"):
+        if params.get("_allow_partial_answer") and params.get("_multi_hop_slot_gate"):
+            prompt = (
+                "LUU Y BAT BUOC: hay uu tien [Bang fact da kiem tra tu multi-hop]. "
+                "Neu o nao ghi CHUA TIM THAY TRONG NGUON thi phai noi ro la chua tim thay, "
+                "khong lay diem chuan de dien vao hoc phi va khong tu suy doan.\n\n" + prompt
+            )
+        elif params.get("low_confidence"):
             prompt = (
                 "LƯU Ý: bằng chứng truy xuất được có thể chưa đầy đủ. "
                 "Nếu không đủ cơ sở hãy TRẢ LỜI RÕ 'Tôi chưa tìm thấy thông tin...' "
@@ -1983,13 +2677,14 @@ class CustomQA:
         print("-" * 80)
         print(context if context.strip() else "[Empty context]")
         print("=" * 80)
-        print("[FINAL PROMPT] Qwen4B input:")
-        print("-" * 80)
-        print(prompt)
-        print("=" * 80 + "\n")
-        _debug_block("READER_SYSTEM_PROMPT", READER_UNTRAINED_INSTRUCTION + READER_UNTRAINED_PREFIX, limit=_debug_int_env("BOT_DEBUG_PROMPT_CHARS", 20000))
-        _debug_block("READER_CONTEXT", context, limit=_debug_int_env("BOT_DEBUG_PROMPT_CHARS", 20000))
-        _debug_block("READER_FINAL_PROMPT", prompt, limit=_debug_int_env("BOT_DEBUG_PROMPT_CHARS", 20000))
+        if _debug_full_prompt_enabled():
+            print("[FINAL PROMPT] Qwen4B input:")
+            print("-" * 80)
+            print(prompt)
+            print("=" * 80 + "\n")
+            _debug_block("READER_SYSTEM_PROMPT", READER_UNTRAINED_INSTRUCTION + READER_UNTRAINED_PREFIX, limit=_debug_int_env("BOT_DEBUG_PROMPT_CHARS", 20000))
+            _debug_block("READER_CONTEXT", context, limit=_debug_int_env("BOT_DEBUG_PROMPT_CHARS", 20000))
+            _debug_block("READER_FINAL_PROMPT", prompt, limit=_debug_int_env("BOT_DEBUG_PROMPT_CHARS", 20000))
         self.logger.start()
         pre_output: ModelPreOutput = {
             "generation_params": params,
@@ -2084,8 +2779,8 @@ async def main():
             params.setdefault("hybrid_retrieval", True)
             params.setdefault("auto_multi_hop", True)
             params.setdefault("multi_hop_complexity_threshold", 2)
-            params.setdefault("reader_table_rescue_max_sources", 2)
-            params.setdefault("reader_table_rescue_max_chars", 6000)
+            params.setdefault("reader_table_rescue_max_sources", 3)
+            params.setdefault("reader_table_rescue_max_chars", 12000)
             _debug_block(
                 "SERVER_REQUEST",
                 _debug_json({

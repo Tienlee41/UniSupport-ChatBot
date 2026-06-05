@@ -119,3 +119,16 @@ Thông tin tham khảo:
 {context}
 Câu hỏi:
 {question}"""
+
+READER_TABLE_GROUNDING_RULES = """Quy tac bat buoc khi doc bang/PDF:
+- Giu nguyen don vi trong tai lieu, khong tu doi "dong/thang" thanh "dong/nam" va khong tu quy doi neu tai lieu khong yeu cau.
+- Neu cau hoi rong ve hoc phi/diem chuan/chi tieu, phai tra loi theo cac nhom trong bang va neu con thieu nhom/cot thi noi ro phan thieu.
+- Khi bang co nhieu cot don vi, phai neu dung tung cot nhu "dong/thang", "dong/tin chi", "hoc lai/cai thien", "bang kep".
+- Neu cau hoi so sanh tu 2 truong/doi tuong tro len va co so lieu, uu tien bang Markdown voi cac cot: Truong, Diem chuan, Hoc phi, Nhan xet.
+- Neu cau hoi dang danh sach/loc/top/xep hang theo dieu kien diem chuan va hoc phi, chi liet ke truong co du ca hai so lieu hop le thoa dieu kien; khong dua truong thieu diem hoac thieu hoc phi vao danh sach dat dieu kien.
+"""
+
+READER_TEMPLATE = READER_TEMPLATE.replace(
+    "Thông tin tham khảo:",
+    READER_TABLE_GROUNDING_RULES + "\nThông tin tham khảo:",
+)

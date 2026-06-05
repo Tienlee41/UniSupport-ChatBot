@@ -1,253 +1,349 @@
 # UniAdmission-ChatBot
 
-![Python](https://img.shields.io/badge/python-v3.9+-blue.svg)
-![FastAPI](https://img.shields.io/badge/FastAPI-green.svg)
-![Qwen](https://img.shields.io/badge/Qwen3-4B-orange.svg)
-![VLLM](https://img.shields.io/badge/vLLM-inference-red.svg)
+![Python](https://img.shields.io/badge/python-3.9+-blue.svg)
+![FastAPI](https://img.shields.io/badge/FastAPI-backend-green.svg)
+![Qwen](https://img.shields.io/badge/Qwen3--4B-LLM-orange.svg)
+![vLLM](https://img.shields.io/badge/vLLM-inference-red.svg)
 
-Một chatbot AI hỗ trợ tư vấn tuyển sinh đại học thông minh.
+UniAdmission-ChatBot là hệ thống chatbot hỗ trợ tư vấn tuyển sinh đại học tại Việt Nam. Hệ thống kết hợp mô hình ngôn ngữ lớn đã tinh chỉnh, cơ sở dữ liệu vector, tìm kiếm Web và cơ chế định tuyến truy vấn nhằm cung cấp câu trả lời có căn cứ, phù hợp với các câu hỏi về trường, ngành, điểm chuẩn, học phí và thông tin tuyển sinh.
 
-🌐 **Demo trực tiếp**: [https://uniadmission.me](https://uniadmission.me)
 
-## 📋 Mục lục
+---
 
-- [Tổng quan](#tổng-quan)
-- [Tính năng chính](#tính-năng-chính)
-- [Kiến trúc hệ thống](#kiến-trúc-hệ-thống)
-- [Cài đặt](#cài-đặt)
-- [Sử dụng](#sử-dụng)
-- [Triển khai API model](#triển-khai-api)
-- [Triển khai Kaggle](#triển-khai-kaggle)
-- [API Documentation](#api-documentation)
-- [Cấu hình nâng cao](#-cấu-hình-nâng-cao)
+## 1. Tổng quan
 
-## 🎯 Tổng quan
+Hệ thống được thiết kế để hỗ trợ học sinh, phụ huynh và sinh viên tra cứu thông tin tuyển sinh bằng tiếng Việt tự nhiên.
 
-UniAdmission-ChatBot là một hệ thống chatbot AI được thiết kế đặc biệt để hỗ trợ học sinh, phụ huynh và các bên liên quan trong việc tư vấn tuyển sinh đại học tại Việt Nam. 
+Thay vì chỉ dựa vào tri thức nội tại của mô hình ngôn ngữ, hệ thống sử dụng kiến trúc truy xuất tăng cường sinh, kết hợp:
 
-Hệ thống sử dụng mô hình **Qwen3-4B được fine-tune** riêng cho nhiệm vụ tư vấn tuyển sinh, kết hợp với **intelligent routing system** để tự động lựa chọn giữa **Vector Database Search** và **Web Search** tùy theo loại câu hỏi.
+* **Qwen3-4B đã tinh chỉnh** cho miền tư vấn tuyển sinh.
+* **Vector Database Search** cho dữ liệu đã chuẩn hóa.
+* **Web Search** cho thông tin mới hoặc chưa có trong cơ sở dữ liệu nội bộ.
+* **Smart Search Routing** để lựa chọn nguồn dữ liệu phù hợp với từng câu hỏi.
+* **vLLM** để phục vụ suy luận và sinh phản hồi dạng streaming.
 
-### 🔍 **Smart Search Routing**
-- **Vector Database**: Cho câu hỏi về điểm chuẩn, học phí, thông tin cụ thể của trường/ngành
-- **Web Search**: Cho câu hỏi về tin tức, thông tin cập nhật, xu hướng tuyển sinh, thông tin 3 công khai
+---
 
-## ✨ Tính năng chính
+## 2. Tính năng chính
 
-- **🤖 Fine-tuned Qwen3-4B**: Mô hình AI được fine-tune đặc biệt cho lĩnh vực tư vấn tuyển sinh
-- **🧠 Intelligent Search Routing**: Tự động phân tích câu hỏi và chọn phương pháp tìm kiếm tối ưu
-  - **Vector Database Search**: Cho thông tin chuẩn về trường, ngành, điểm chuẩn
-  - **Web Search**: Cho tin tức và thông tin cập nhật
-- **📊 Vector Database**: Cơ sở dữ liệu vector chứa thông tin chi tiết của 200+ trường đại học
-- **🚀 VLLM Inference**: Triển khai mô hình trên Kaggle với vLLM để tối ưu tốc độ
-- **👤 Hệ thống xác thực**: Đăng nhập/đăng ký với session management
-- **💬 Lịch sử hội thoại**: Lưu trữ và quản lý conversations với streaming response
-- **🌐 Multi-source Integration**: Kết hợp dữ liệu từ vector DB, web search và fine-tuned model
-- **📱 Responsive Web UI**: Giao diện thân thiện
+* Trả lời câu hỏi tuyển sinh bằng tiếng Việt tự nhiên.
+* Truy xuất thông tin từ cơ sở dữ liệu của hơn 200 trường đại học.
+* Hỗ trợ các nhóm thông tin: thông tin chung, điểm chuẩn, học phí, tuyển sinh.
+* Tự động định tuyến câu hỏi sang Local Search, Web Search hoặc Hybrid Search.
+* Sinh câu trả lời dạng streaming.
+* Hiển thị nguồn tham khảo để người dùng kiểm chứng.
+* Lưu lịch sử hội thoại và quản lý phiên làm việc.
+* Triển khai mô hình Qwen3-4B thông qua vLLM.
 
-## 🧩 Kiến trúc hệ thống
+---
 
-### Frontend (Web Application)
-- **Web Interface**: HTML/CSS/JavaScript với chat interface
-- **Templates**: Jinja2 cho login, register, chat pages
-- **Real-time**: Streaming responses từ backend
+## 3. Kiến trúc hệ thống
 
-### Backend API (FastAPI)
-- **Authentication Routes**: JWT-based user management
-- **Chat Routes**: Conversation handling với session management  
-- **Intelligent Router**: Phân tích câu hỏi và chọn search strategy
-- **Stream Management**: Quản lý real-time responses từ Kaggle
+Hệ thống gồm các thành phần chính:
 
-### AI/ML Pipeline
-- **Qwen3-4B Fine-tuned**: Được training trên 1000+ Q&A tuyển sinh đại học tại Việt Nam
-- **Smart Query Router**: Phân loại câu hỏi và chọn data source phù hợp
-  ```python
-  # Local DB: "Điểm chuẩn CNTT UET 2024?"
-  # Web Search: "Xu hướng tuyển sinh 2025?"
-  ```
-- **Vector Database**: FAISS với multilingual-e5-small embeddings
-- **Kaggle Deployment**: vLLM inference server với ngrok tunneling
+```text
+User
+  ↓
+Web Chat UI
+  ↓
+FastAPI Backend
+  ↓
+Smart Query Router
+  ├── Local Search: FAISS Vector Database
+  ├── Web Search: Search API + Crawl + Rerank
+  └── Hybrid Search: kết hợp Local và Web
+  ↓
+RAG Context Builder
+  ↓
+Qwen3-4B + LoRA Adapter on vLLM
+  ↓
+Streaming Answer + Sources
+```
 
-### Data Architecture
-- **Local DB Structure**:
-  ```
-  📁 vectordb/
-  ├── 🏫 200+ universities × 4 sections each
-  │   ├── thong_tin_chung (general info)
-  │   ├── hoc_phi (tuition fees)  
-  │   ├── diem_chuan (admission scores)
-  │   └── tuyen_sinh (admission info)
-  ```
-- **Web Search**: Brave API + Google Custom Search
-- **Cache System**: Vector cache với auto-refresh 15 phút
+### Frontend
 
-## 🚀 Cài đặt
+* Giao diện hội thoại Web.
+* Hỗ trợ đăng nhập, đăng ký và quản lý phiên chat.
+* Hiển thị phản hồi dạng streaming và nguồn tham khảo.
 
-### Yêu cầu hệ thống
-- Python 3.9+ (ưu tiên Python 3.12.8)
-- pip hoặc conda
-- GPU (khuyến nghị cho việc chạy mô hình AI)
+### Backend
 
-### Bước 1: Clone repository
+* Xây dựng bằng FastAPI.
+* Quản lý xác thực, phiên hội thoại và lịch sử tin nhắn.
+* Điều phối truy vấn đến các pipeline tìm kiếm và mô hình.
+
+### AI Pipeline
+
+* Qwen3-4B được tinh chỉnh bằng LoRA.
+* FAISS Vector Database dùng embedding `intfloat/multilingual-e5-small`.
+* Web Search dùng Brave Search API hoặc Google Custom Search.
+* vLLM phục vụ inference tốc độ cao.
+
+---
+
+## 4. Dữ liệu
+
+Dữ liệu cục bộ được tổ chức theo từng trường đại học và từng nhóm thông tin.
+
+```text
+vectordb/
+├── university_1/
+│   ├── thong_tin_chung
+│   ├── hoc_phi
+│   ├── diem_chuan
+│   └── tuyen_sinh
+├── university_2/
+│   ├── thong_tin_chung
+│   ├── hoc_phi
+│   ├── diem_chuan
+│   └── tuyen_sinh
+└── ...
+```
+
+Mỗi tài liệu được gắn metadata như:
+
+* `school_id`: định danh trường.
+* `section`: nhóm thông tin.
+* `source`: nguồn dữ liệu.
+* `content`: nội dung văn bản.
+
+Cách tổ chức này giúp hệ thống truy xuất nhanh theo cả metadata và ngữ nghĩa.
+
+---
+
+## 5. Cài đặt
+
+### Yêu cầu
+
+* Python 3.9+
+* pip hoặc conda
+* GPU nếu chạy mô hình cục bộ
+* Các API key cần thiết cho Web Search và mô hình
+
+### Clone repository
+
 ```bash
 git clone https://github.com/photienanh/UniAdmission-ChatBot.git
 cd UniAdmission-ChatBot
 ```
 
-### Bước 2: Tạo môi trường ảo
+### Tạo môi trường ảo
+
+Windows:
+
 ```bash
-# Windows
 python -m venv venv
 venv\Scripts\activate.bat
-# Linux/Mac
+```
+
+Linux/MacOS:
+
+```bash
 python3 -m venv venv
 source venv/bin/activate
 ```
 
-### Bước 3: Cài đặt dependencies
+### Cài đặt thư viện
+
 ```bash
 pip install -r requirements.txt
 ```
 
-### Bước 4: Cấu hình môi trường
+---
+
+## 6. Cấu hình môi trường
+
 Tạo file `server.env` trong thư mục `app/`:
+
 ```env
 NGROK_TOKEN=your_ngrok_token
 JWT_SECRET_KEY=your_jwt_secret_key
 ```
-Tạo file `worker.env` trong thư mục `app/`:
-```
-HUGGING_FACE_TOKEN=your_hugging_face_token
 
+Tạo file `worker.env` trong thư mục `app/`:
+
+```env
+HUGGING_FACE_TOKEN=your_hugging_face_token
 GEMINI_API_KEY=your_gemini_api_key
 BRAVE_SEARCH_API_KEY=your_brave_api_key
 OPENAI_API_KEY=your_openai_api_key
 GOOGLE_SEARCH_API_KEY=your_google_api_key
 GOOGLE_SEARCH_CX=your_google_search_cx
-
+CRAPINGBEE_API_KEY=your_crapingbee_api_key
 NGROK_TOKEN=your_ngrok_token
 NGROK_TOKEN_1=your_ngrok_token_1
 ```
 
-### Bước 5: Chạy ứng dụng
+---
+
+## 7. Chạy ứng dụng
+
+### Development
+
 ```bash
-# Development mode
 cd app
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
 
-# Production mode
-cd app  
+### Production
+
+```bash
+cd app
 uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
-Ứng dụng sẽ chạy tại: `http://localhost:8000`
+Ứng dụng chạy tại:
 
-### Bước 6: Mở public server
-Chạy file ngrok.py
-## 🚀 Triển khai API model trên local
+```text
+http://localhost:8000
+```
+
+---
+
+## 8. Triển khai mô hình
+
+### Chạy API model trên local
+
 ```bash
 cd kaggle_dedicated
-```
-Chạy file `api_v3.py` (hoặc `api_v3.ipynb`)
-
-## 🚀 Triển khai Kaggle
-
-### Setup Kaggle Notebook
-Dự án sử dụng Kaggle để deploy mô hình Qwen3-4B với vLLM:
-
-1. **Upload notebook**: `kaggle_dedicatd/vllm_single_v3.ipynb`
-2. **Cấu hình kết nối**:
-   Đổi giá trị của `DOMAIN` trong block code đầu tiên thành url in ra khi chạy file `ngrok.py` (hoặc `https://uniadmission.me)`)
-3. **Chạy notebook** - sẽ tự động:
-   - Download code, dữ liệu, LoRA adapter từ server
-   - Load Qwen3-4B + LoRA adapter
-   - Khởi động vLLM inference server
-   - Tạo ngrok tunnel cho public access
-   - Connect với main server
-
-### Kaggle Architecture
-```python
-# Kaggle deployment stack
-Qwen3-4B (Base Model)
-├── LoRA Fine-tuned Adapter (trên dữ liệu Q&A tuyển sinh)  
-├── vLLM Inference Engine (fast generation)
-├── Smart Query Router (vector vs web search)
-├── ngrok Tunnel (public access)
-└── FastAPI Integration (seamless connection)
+python api_v3.py
 ```
 
-### Model Performance
-- **Base Model**: Qwen3-4B (4B parameters)
-- **Fine-tuning**: LoRA on 1000+ Vietnamese admission Q&As
-- **Inference Speed**: ~50 tokens/second trên Kaggle GPU
-- **Context Length**: 32K tokens
-- **Languages**: Vietnamese + English
+Hoặc sử dụng notebook:
 
-## 📖 Sử dụng
-
-### Web Interface
-1. Truy cập [https://uniadmission.me](https://uniadmission.me) hoặc `http://localhost:8000`
-2. Đăng ký/Đăng nhập tài khoản
-3. Bắt đầu chat với bot:
-   - **Vector DB queries**: "Điểm chuẩn CNTT UET 2024?", "Học phí ngành Y ĐHQGHN?"
-   - **Web search queries**: "Thông báo tuyển sinh mới nhất", "Xu hướng ngành hot 2025"
-
-### Ví dụ câu hỏi
-```
-🎯 Vector Database (thông tin chuẩn):
-- "Điểm chuẩn ngành CNTT trường UET năm 2024?"
-- "Học phí các ngành của ĐHBK Hà Nội?"  
-- "Thông tin tuyển sinh trường FPT?"
-
-🌐 Web Search (thông tin cập nhật):
-- "Tin tức tuyển sinh đại học mới nhất?"
-- "Xu hướng ngành nghề hot năm 2025?"
-- "Thông báo tuyển sinh bổ sung?"
+```text
+kaggle_dedicated/api_v3.ipynb
 ```
 
-### Smart Routing Logic
-Hệ thống tự động phân tích câu hỏi và chọn data source:
-- **Từ khóa trường cụ thể** + **điểm chuẩn/học phí** → Vector DB
-- **Câu hỏi chung** + **xu hướng/tin tức** → Web Search
+### Triển khai trên Kaggle
 
-### API Endpoints
-- `POST /chat`: Gửi tin nhắn tới chatbot
-- `GET /chat/{stream_id}`: Nhận streaming response
-- `GET /sessions`: Lấy danh sách sessions của user
-- `GET /session/{session_id}/messages`: Lấy lịch sử tin nhắn
-- `DELETE /session/{session_id}`: Xóa session
+Dự án hỗ trợ triển khai Qwen3-4B với vLLM trên Kaggle Notebook.
 
-## 📚 API Documentation
+Các bước chính:
 
-Sau khi chạy ứng dụng, bạn có thể truy cập:
-- **Swagger UI**: `http://localhost:8000/docs`
-- **ReDoc**: `http://localhost:8000/redoc`
+1. Upload notebook `kaggle_dedicated/vllm_single_v3.ipynb`.
+2. Cấu hình biến `DOMAIN` trỏ đến server backend.
+3. Chạy notebook để:
 
-## 🔧 Cấu hình nâng cao
+   * tải mô hình và LoRA adapter;
+   * khởi động vLLM inference server;
+   * tạo ngrok tunnel;
+   * kết nối với FastAPI backend.
 
-### Fine-tuning Qwen3-4B
-1. **Tạo training data**:
-```bash
-cd finetune
-# Cấu hình API keys trong api_key.env
-python make_data.py  # Tạo 1000+ Q&A pairs từ GPT-4
-```
+---
 
-2. **Fine-tune model**:
-   - Mở notebook `finetune/finetune_qwen3_4b.ipynb`
-   - Chạy LoRA fine-tuning trên training data
-   - Export adapter weights để deploy trên Kaggle
+## 9. Cập nhật Vector Database
 
-### Cập nhật Vector Database
+Quy trình cập nhật dữ liệu gồm crawl, chuẩn hóa, tạo mapping và xây dựng lại FAISS index.
+
 ```bash
 cd vector_database/crawl
 
-# Crawl dữ liệu mới từ các trường
-python selenium_crawler.py -> python re_format.py -> python create_mapping.py
-
-# Rebuild vector database
-cd ..
-python create_vector_db.py
-# Tạo 800+ documents (200 trường × 4 sections)
+python selenium_crawler.py
+python re_format.py
+python create_mapping.py
 ```
 
-**⭐ Nếu project này hữu ích cho bạn, hãy give star để ủng hộ nhé!**
+Sau đó rebuild vector database:
+
+```bash
+cd ..
+python create_vector_db.py
+```
+
+---
+
+## 10. Fine-tuning
+
+Quy trình tinh chỉnh mô hình gồm hai bước chính:
+
+### Tạo dữ liệu huấn luyện
+
+```bash
+cd finetune
+python make_data.py
+```
+
+### Fine-tune Qwen3-4B
+
+Sử dụng notebook:
+
+```text
+finetune/finetune_qwen3_4b.ipynb
+```
+
+Quá trình huấn luyện sử dụng LoRA để giảm số lượng tham số cần cập nhật. Adapter sau huấn luyện được export và sử dụng trong quá trình triển khai với vLLM.
+
+---
+
+## 11. API
+
+Một số endpoint chính:
+
+| Method   | Endpoint                         | Chức năng                |
+| -------- | -------------------------------- | ------------------------ |
+| `POST`   | `/chat`                          | Gửi câu hỏi đến chatbot  |
+| `GET`    | `/chat/{stream_id}`              | Nhận phản hồi streaming  |
+| `GET`    | `/sessions`                      | Lấy danh sách phiên chat |
+| `GET`    | `/session/{session_id}/messages` | Lấy lịch sử hội thoại    |
+| `DELETE` | `/session/{session_id}`          | Xóa phiên chat           |
+
+Tài liệu API được cung cấp tại:
+
+```text
+http://localhost:8000/docs
+http://localhost:8000/redoc
+```
+
+---
+
+## 12. Ví dụ câu hỏi
+
+### Câu hỏi dùng Local Search
+
+```text
+Điểm chuẩn ngành Công nghệ thông tin của UET năm 2024 là bao nhiêu?
+```
+
+```text
+Học phí các ngành của PTIT là bao nhiêu?
+```
+
+### Câu hỏi dùng Web Search
+
+```text
+Thông báo tuyển sinh mới nhất của UET là gì?
+```
+
+```text
+Xu hướng tuyển sinh đại học năm 2025 có gì đáng chú ý?
+```
+
+### Câu hỏi cần Hybrid Search
+
+```text
+So sánh học phí ngành Công nghệ thông tin của UET năm 2024 với thông tin mới nhất năm 2025.
+```
+
+---
+
+## 13. Công nghệ sử dụng
+
+* Python
+* FastAPI
+* Jinja2
+* FAISS
+* multilingual-e5-small
+* Qwen3-4B
+* LoRA
+* vLLM
+* Brave Search API
+* Google Custom Search
+* SQLite
+* ngrok
+
+---
+
+## 14. Ghi chú
+
+Dự án phục vụ mục tiêu nghiên cứu và thử nghiệm trong bài toán tư vấn tuyển sinh. Thông tin do hệ thống sinh ra cần được kiểm chứng lại với nguồn chính thức của các trường đại học hoặc cơ quan quản lý giáo dục khi sử dụng cho các quyết định quan trọng.

@@ -245,3 +245,60 @@ REASONER_TEMPLATE += """
 - Voi filter: chi giu item thoa TAT CA dieu kien.
 - Output phai la JSON object hop le, khong boc trong markdown fence.
 """
+
+DECOMPOSER_PREFIX += """
+
+# MAU BAT BUOC CHO CAU HOI CO NHIEU DIEU KIEN DU LIEU
+- Neu cau hoi co ca `diem chuan/diem san` va `hoc phi`, tao cac sub-question thu thap du lieu diem va hoc phi co cung pham vi truong/nganh/nam, sau do moi tao buoc reasoning de giao/lap bang ket qua.
+- Khong tao sub-question chi hoi `danh sach truong dao tao nganh X` neu cau goc can loc theo diem/hoc phi; danh sach candidates phai den tu bang diem/hoc phi co so lieu.
+- Sub-question du lieu nen giu nguyen dieu kien quan trong: khoi/to hop (A00), nganh, nam, nguong diem, nguong hoc phi.
+- Buoc reasoning cuoi phai noi ro: chi giu truong co day du ca diem va hoc phi trong evidence; thieu mot trong hai thi loai bo hoac ghi unknown neu cau hoi khong yeu cau loc.
+
+Vi du:
+Question: "danh sach cac truong co diem chuan khoi A00 nganh cong nghe thong tin tren 25 diem va hoc phi duoi 50 trieu"
+Sub-questions tot:
+1. diem chuan khoi A00 nganh cong nghe thong tin nam moi nhat cua cac truong, resolver=hybrid, evidence_type=list
+2. hoc phi nganh cong nghe thong tin nam moi nhat cua cac truong trong danh sach co diem chuan tren 25, resolver=hybrid, evidence_type=list
+3. loc cac truong co diem chuan A00 nganh cong nghe thong tin >25 va hoc phi <50 trieu, resolver=reasoning, evidence_type=computation, depends_on=[1,2]
+"""
+
+LIST_FACT_EXTRACTOR_INSTRUCTION += (
+    " Neu context chi co tieu de, link, hoac doan chung chung khong co hang bang/gia tri can lay, "
+    "phai tra answer rong, items rong, confidence 0.0. "
+    "Voi cau hoi danh sach, uu tien tra nhieu entry co du ten truong/nganh/nam/gia tri neu evidence co."
+)
+
+REASONER_INSTRUCTION += (
+    " Voi cau hoi loc theo nhieu dieu kien, moi item dau ra phai co tat ca gia tri bat buoc "
+    "(vi du diem va hoc phi) trong evidence. Khong du gia tri thi loai item khoi answer."
+)
+
+DECOMPOSER_PREFIX += """
+
+# QUY TAC RIENG CHO SUB-QUERY DIEM CHUAN / HOC PHI DAI HOC CHINH QUY
+- Khi cau hoi co UET, viet ro trong sub-query du lieu: "Truong Dai hoc Cong nghe DHQGHN UET".
+- Khi cau hoi co PTIT, viet ro trong sub-query du lieu: "Hoc vien Cong nghe Buu chinh Vien thong PTIT".
+- Sub-query diem chuan phai dung cum "diem chuan trung tuyen dai hoc chinh quy" hoac "diem trung tuyen dai hoc chinh quy", khong chi viet "diem chuan" qua ngan.
+- Neu cau hoi co khoi/to hop A00 nhung truong cong bo diem chung cho cac to hop, sub-query van phai tim "diem trung tuyen dai hoc chinh quy" cua nganh do; A00 la dieu kien can doi chieu, khong duoc de A00 lam mat nguon chinh thuc.
+- Sub-query hoc phi phai dung cum "dinh muc hoc phi dai hoc chinh quy" va nam hoc tuong ung (vi du nam 2025 -> nam hoc 2025-2026 neu user khong noi ro).
+- Neu cau hoi khong hoi sau dai hoc/thac si/tien si, TUYET DOI khong tao sub-query hoc phi thac si, cao hoc, sau dai hoc.
+- Voi cau hoi so sanh UET va PTIT ve diem + hoc phi, tao toi thieu 4 sub-question du lieu atomic: diem UET, hoc phi UET, diem PTIT, hoc phi PTIT; sau do tao 1 sub-question reasoning de lap bang/so sanh.
+"""
+
+LIST_FACT_EXTRACTOR_INSTRUCTION += (
+    " Voi cau hoi ve diem chuan, khong ket luan 'chua cong bo' neu context chi la de an/thong tin tuyen sinh "
+    "hoac trang khong co bang diem trung tuyen; trong truong hop do tra answer rong va confidence 0.0. "
+    "Voi cau hoi hoc phi dai hoc chinh quy, bo qua doan noi ve thac si/cao hoc/sau dai hoc neu cau hoi khong nhac den cac bac hoc nay."
+)
+
+FACT_EXTRACTOR_INSTRUCTION += (
+    " Voi cau hoi diem chuan co A00/khoi A ma khong noi ro hoc ba/CCQT/DGNL/DGTD, "
+    "chi lay diem theo diem thi THPT/tot nghiep THPT/dai hoc chinh quy; bo qua dong hoc ba, CCQT, ket hop, DGNL, DGTD. "
+    "Voi cau hoi hoc phi, khong lay so tien trong trang mien giam, hoc bong, ho tro chi phi neu cau hoi khong hoi chinh sach mien giam/hoc bong."
+)
+
+LIST_FACT_EXTRACTOR_INSTRUCTION += (
+    " Voi cau hoi diem chuan co A00/khoi A ma khong noi ro hoc ba/CCQT/DGNL/DGTD, "
+    "chi trich cac entry diem thi THPT/tot nghiep THPT/dai hoc chinh quy; bo qua entry hoc ba, CCQT, ket hop, DGNL, DGTD. "
+    "Voi cau hoi hoc phi, khong dung muc mien giam, hoc bong, ho tro chi phi lam hoc phi phai dong."
+)
