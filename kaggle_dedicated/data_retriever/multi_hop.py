@@ -609,6 +609,49 @@ def _strict_filter_query(question: str) -> bool:
     return _contains_any(q_norm, filter_terms) and sum(1 for term in metric_terms if term in q_norm) >= 2
 
 
+_EXPLICIT_SCHOOL_SCOPE_TERMS = [
+    "uet", "truong dai hoc cong nghe", "dai hoc cong nghe dhqghn",
+    "hust", "dai hoc bach khoa ha noi", "bach khoa ha noi",
+    "ptit", "hoc vien cong nghe buu chinh vien thong", "buu chinh vien thong",
+    "haui", "dai hoc cong nghiep ha noi",
+    "act", "kma", "hoc vien ky thuat mat ma", "hoc vien ki thuat mat ma",
+    "neu", "dai hoc kinh te quoc dan",
+    "ftu", "dai hoc ngoai thuong",
+    "tmu", "dai hoc thuong mai",
+    "hnue", "dai hoc su pham ha noi",
+    "hmu", "dai hoc y ha noi",
+    "utc", "dai hoc giao thong van tai",
+    "hus", "dai hoc khoa hoc tu nhien",
+    "ueh", "dai hoc kinh te tp hcm", "dai hoc kinh te thanh pho ho chi minh",
+    "ueb", "dai hoc kinh te dhqghn",
+    "ulis", "dai hoc ngoai ngu dhqghn",
+    "ussh", "dai hoc khoa hoc xa hoi va nhan van",
+    "ajc", "hoc vien bao chi va tuyen truyen",
+]
+
+
+def _has_explicit_school_scope(text: str) -> bool:
+    norm = _normalize_for_match(text)
+    return _contains_any(norm, _EXPLICIT_SCHOOL_SCOPE_TERMS)
+
+
+def _broad_multi_school_scope(sub_question: str, root_question: str) -> bool:
+    """True for open-ended multi-school queries that require web coverage.
+
+    Local DB is useful for explicitly named schools, but it is incomplete/stale
+    for broad filters such as "schools in Hanoi with score > X and tuition < Y".
+    Those sub-queries should collect evidence from web under source_mode=auto.
+    """
+    surface = f"{sub_question} {root_question}"
+    norm = _normalize_for_match(surface)
+    broad_terms = [
+        "cac truong", "nhung truong", "danh sach truong", "danh sach cac truong",
+        "top truong", "xep hang truong", "o ha noi", "tai ha noi",
+        "khu vuc ha noi", "toan quoc",
+    ]
+    return _contains_any(norm, broad_terms) and not _has_explicit_school_scope(surface)
+
+
 def _reasoning_filter_answer_valid(question: str, answer: str) -> tuple[bool, str]:
     if not _strict_filter_query(question):
         return True, "not_strict_filter"
@@ -634,7 +677,14 @@ def _reasoning_filter_answer_valid(question: str, answer: str) -> tuple[bool, st
 
 
 def _normalize_plan_for_strict_list(question: str, plan: DecomposerPlan) -> DecomposerPlan:
-    """Make metric sub-queries over many schools return multi-entry facts."""
+    """Normalize broad list/filter plans for safer retrieval.
+
+    For open-ended multi-school filters, local DB must not be authoritative
+    because it may be incomplete or stale. Under source_mode=auto, forcing the
+    resolver to web makes the sub-query behave like a web single-hop query; if
+    web evidence is unavailable, later gates should fail instead of fabricating
+    from stale local rows.
+    """
     if not _strict_filter_query(question):
         return plan
     q_norm = _normalize_for_match(question)
@@ -644,11 +694,16 @@ def _normalize_plan_for_strict_list(question: str, plan: DecomposerPlan) -> Deco
         resolver = sq.resolver
         evidence_type = sq.evidence_type
         is_metric = _contains_any(sq_norm, ["diem chuan", "diem trung tuyen", "diem xet tuyen", "hoc phi"])
+        broad_multi_subject = _broad_multi_school_scope(sq.text, question)
         multi_subject = _contains_any(sq_norm + " " + q_norm, ["cac truong", "nhung truong", "danh sach", "o ha noi"])
-        if sq.resolver != "reasoning" and is_metric and multi_subject:
-            evidence_type = "list"
-            if resolver == "local_db":
-                resolver = "hybrid"
+        if sq.resolver != "reasoning":
+            if broad_multi_subject:
+                evidence_type = "list"
+                resolver = "web"
+            elif is_metric and multi_subject:
+                evidence_type = "list"
+                if resolver == "local_db":
+                    resolver = "hybrid"
         normalized.append(
             SubQuestion(
                 id=sq.id,

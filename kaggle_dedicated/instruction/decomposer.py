@@ -31,7 +31,8 @@ Phân tích câu hỏi người dùng và trả ra DAG các sub-question để p
    - Neu cau hoi yeu cau so sanh/loc/xep hang/top N/goi y theo dieu kien, PHAI co sub-question cuoi `resolver="reasoning"` phu thuoc vao tat ca sub-q du lieu lien quan.
    - Sub-q final phai neu ro phep toan: sort theo diem, loc diem > X, loc hoc phi < Y, giao cac danh sach, so sanh A/B.
 8. **Coverage cho list/ranking/filter**:
-   - Neu can danh sach nhieu truong hoac top N, uu tien `resolver="hybrid"` cho buoc thu thap du lieu de local DB va web bo sung nhau.
+   - Neu can danh sach nhieu truong/top N/filter ma user KHONG neu ro ten truong cu the, uu tien `resolver="web"` cho cac buoc thu thap danh sach/diem/hoc phi de dam bao do phu va do moi.
+   - Chi uu tien `resolver="local_db"` cho cau hoi neu ro truong cu the hoac khi user bat che do local; neu can doi chieu nguon thi dung `hybrid`.
    - Khong chon vai truong theo phan doan; tach buoc lay candidates va buoc reasoning sort/filter.
 
 # ĐỊNH DẠNG

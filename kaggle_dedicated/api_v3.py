@@ -499,6 +499,39 @@ def _normalize_number_token(token: str) -> str:
     return (token or "").strip().replace(",", ".")
 
 
+def _number_token_supported(token: str, evidence_norm: str) -> bool:
+    token = (token or "").strip().strip(".,;:")
+    if not token:
+        return True
+
+    direct_variants = {
+        token,
+        token.replace(",", "."),
+        token.replace(".", ","),
+        token.replace(",", ""),
+        token.replace(".", ""),
+    }
+    for variant in direct_variants:
+        if variant and variant in evidence_norm:
+            return True
+
+    compact = re.sub(r"[,.]", "", token)
+    try:
+        value = int(compact)
+    except Exception:
+        return False
+
+    if value >= 1_000_000:
+        million = value / 1_000_000
+        million_variants = {
+            f"{million:g} trieu",
+            f"{million:g}trieu",
+            f"{million:g} tr",
+        }
+        return any(variant in evidence_norm for variant in million_variants)
+    return False
+
+
 def _reasoner_answer_grounded(answer: str, evidence: str, question: str) -> tuple[bool, str]:
     """Guard against fabricated numeric filters/rankings from reasoning hops."""
     if _negative_or_empty_answer(answer):
@@ -507,10 +540,10 @@ def _reasoner_answer_grounded(answer: str, evidence: str, question: str) -> tupl
         return True, "not_strict"
 
     evidence_norm = _normalize_for_match(f"{evidence}\n{question}")
-    answer_numbers = [_normalize_number_token(x) for x in re.findall(r"\d+(?:[,.]\d+)?", answer or "")]
+    answer_numbers = re.findall(r"\d[\d.,]*", answer or "")
     missing_numbers = [
         number for number in answer_numbers
-        if number and number not in evidence_norm and number.replace(".", ",") not in evidence_norm
+        if not _number_token_supported(number, evidence_norm)
     ]
     if missing_numbers:
         return False, f"numbers_not_in_evidence={missing_numbers[:5]}"
@@ -1984,12 +2017,14 @@ class APIModel(APIModelCore):
         try:
             result = json.loads(extract_json(text))
             answer = str(result.get("answer", "")).strip()
-            if not answer and isinstance(result.get("items"), list):
-                answer = " ; ".join(
+            if isinstance(result.get("items"), list):
+                items_answer = " ; ".join(
                     f"{item.get('name', '')}: {item.get('value', '')}".strip(": ")
                     for item in result.get("items", [])
                     if isinstance(item, dict) and (item.get("name") or item.get("value"))
                 ).strip()
+                if items_answer and (is_list_mode or not answer):
+                    answer = items_answer
             conf = float(result.get("confidence", 0.0))
             conf = _calibrate_fact_confidence(answer, conf, evidence_type, sub_q_text, context)
             _debug_block("FACT_EXTRACTOR_PARSED", _debug_json({"answer": answer, "confidence": conf}), limit=0)
@@ -2053,12 +2088,14 @@ class APIModel(APIModelCore):
         try:
             result = json.loads(extract_json(text))
             answer = str(result.get("answer", "")).strip()
-            if not answer and isinstance(result.get("items"), list):
-                answer = " ; ".join(
+            if isinstance(result.get("items"), list):
+                items_answer = " ; ".join(
                     f"{item.get('name', '')}: {item.get('value', '')}".strip(": ")
                     for item in result.get("items", [])
                     if isinstance(item, dict) and (item.get("name") or item.get("value"))
                 ).strip()
+                if items_answer:
+                    answer = items_answer
             conf = float(result.get("confidence", 0.0))
             conf = _calibrate_fact_confidence(answer, conf, "computation", f"{original_question} {sub_q_text}")
             grounded, grounding_reason = _reasoner_answer_grounded(
