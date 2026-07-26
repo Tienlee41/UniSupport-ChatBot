@@ -169,7 +169,7 @@ BRAVE_SEARCH_API_KEY=your_brave_api_key
 OPENAI_API_KEY=your_openai_api_key
 GOOGLE_SEARCH_API_KEY=your_google_api_key
 GOOGLE_SEARCH_CX=your_google_search_cx
-CRAPINGBEE_API_KEY=your_crapingbee_api_key
+SCRAPINGBEE_API_KEY=your_scrapingbee_api_key
 NGROK_TOKEN=your_ngrok_token
 NGROK_TOKEN_1=your_ngrok_token_1
 ```
@@ -253,97 +253,39 @@ python create_vector_db.py
 
 ---
 
-## 10. Fine-tuning
-
-Quy trình tinh chỉnh mô hình gồm hai bước chính:
-
-### Tạo dữ liệu huấn luyện
-
-```bash
-cd finetune
-python make_data.py
-```
-
-### Fine-tune Qwen3-4B
-
-Sử dụng notebook:
+## 10. Cấu trúc thư mục
 
 ```text
-finetune/finetune_qwen3_4b.ipynb
-```
-
-Quá trình huấn luyện sử dụng LoRA để giảm số lượng tham số cần cập nhật. Adapter sau huấn luyện được export và sử dụng trong quá trình triển khai với vLLM.
-
----
-
-## 11. API
-
-Một số endpoint chính:
-
-| Method   | Endpoint                         | Chức năng                |
-| -------- | -------------------------------- | ------------------------ |
-| `POST`   | `/chat`                          | Gửi câu hỏi đến chatbot  |
-| `GET`    | `/chat/{stream_id}`              | Nhận phản hồi streaming  |
-| `GET`    | `/sessions`                      | Lấy danh sách phiên chat |
-| `GET`    | `/session/{session_id}/messages` | Lấy lịch sử hội thoại    |
-| `DELETE` | `/session/{session_id}`          | Xóa phiên chat           |
-
-Tài liệu API được cung cấp tại:
-
-```text
-http://localhost:8000/docs
-http://localhost:8000/redoc
+UniSupport-ChatBot/
+├── app/
+│   ├── frontend/              # Giao diện web, template, static assets
+│   ├── package/               # Model/adapter đóng gói cho backend
+│   ├── main.py                # FastAPI application
+│   ├── server.env             # Cấu hình backend
+│   └── worker.env             # Cấu hình worker/model/web search
+├── kaggle_dedicated/
+│   ├── data_retriever/        # Pipeline RAG: search, crawl, chunk, rerank
+│   ├── instruction/           # Prompt/router/decomposer/reader instructions
+│   ├── lora/                  # LoRA adapters dùng khi triển khai
+│   ├── old_versions/          # Notebook và phiên bản cũ
+│   ├── api_v3.py              # Worker API phục vụ suy luận
+│   └── vllm_v4.ipynb          # Notebook triển khai vLLM/Kaggle
+├── vector_database/
+│   ├── crawl/                 # Crawler, chuẩn hóa dữ liệu trường đại học
+│   └── create_vector_db.py    # Xây dựng FAISS vector database
+├── finetune/                  # Dữ liệu và tài liệu phục vụ huấn luyện LoRA/RAFT
+├── eval/                      # Notebook/script đánh giá thử nghiệm
+├── validation_data/           # Dữ liệu kiểm thử/đối chiếu
+├── logtest/                   # Log chạy thử pipeline
+├── files/                     # Tệp phụ trợ hoặc dữ liệu đầu vào
+├── test_qe/                   # Tệp kiểm thử query expansion/retrieval
+├── README.md                  # Tài liệu hướng dẫn dự án
+├── requirements.txt           # Danh sách thư viện Python
+└── ngrok.py                   # Script hỗ trợ tạo tunnel
 ```
 
 ---
 
-## 12. Ví dụ câu hỏi
-
-### Câu hỏi dùng Local Search
-
-```text
-Điểm chuẩn ngành Công nghệ thông tin của UET năm 2024 là bao nhiêu?
-```
-
-```text
-Học phí các ngành của PTIT là bao nhiêu?
-```
-
-### Câu hỏi dùng Web Search
-
-```text
-Thông báo tuyển sinh mới nhất của UET là gì?
-```
-
-```text
-Xu hướng tuyển sinh đại học năm 2025 có gì đáng chú ý?
-```
-
-### Câu hỏi cần Hybrid Search
-
-```text
-So sánh học phí ngành Công nghệ thông tin của UET năm 2024 với thông tin mới nhất năm 2025.
-```
-
----
-
-## 13. Công nghệ sử dụng
-
-* Python
-* FastAPI
-* Jinja2
-* FAISS
-* multilingual-e5-small
-* Qwen3-4B
-* LoRA
-* vLLM
-* Brave Search API
-* Google Custom Search
-* SQLite
-* ngrok
-
----
-
-## 14. Ghi chú
+## 11. Ghi chú
 
 Dự án phục vụ mục tiêu nghiên cứu và thử nghiệm trong bài toán tư vấn tuyển sinh. Thông tin do hệ thống sinh ra cần được kiểm chứng lại với nguồn chính thức của các trường đại học hoặc cơ quan quản lý giáo dục khi sử dụng cho các quyết định quan trọng.
